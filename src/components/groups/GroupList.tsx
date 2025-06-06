@@ -173,7 +173,7 @@ export const GroupList: React.FC = () => {
                 className={cn(
                   "h-8 w-8 transition-transform hover:scale-110",
                   "ring-1 ring-offset-1 ring-offset-zinc-800",
-                  "hover:ring-blue-500"
+                  "hover:ring-orange-500"
                 )}
               >
                 <AvatarImage src={group.icon} />

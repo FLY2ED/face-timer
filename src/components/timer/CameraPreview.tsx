@@ -154,7 +154,7 @@ export const CameraPreview: React.FC<CameraPreviewProps> = ({
       
       {/* 비디오 비율 정보 표시 (디버깅용) */}
       {videoAspectRatio && process.env.NODE_ENV === 'development' && (
-        <div className="absolute top-0 right-0 bg-black/50 text-white text-xs p-1 z-40">
+        <div className="absolute top-4 right-4 bg-zinc-900/30 rounded-full text-white text-xs font-bold p-1.5 px-3 z-40">
           {videoAspectRatio.toFixed(2)}:1
         </div>
       )}

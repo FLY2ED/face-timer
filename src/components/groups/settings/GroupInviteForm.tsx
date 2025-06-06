@@ -53,7 +53,7 @@ export const GroupInviteForm = ({ groupId }: GroupInviteFormProps) => {
         <Button 
           onClick={handleInviteMember}
           disabled={!inviteEmail.trim() || isInviting}
-          className="bg-blue-500 hover:bg-blue-600"
+          className="bg-orange-500 hover:bg-orange-600"
         >
           {isInviting ? (
             <Loader2 className="h-4 w-4 animate-spin" />

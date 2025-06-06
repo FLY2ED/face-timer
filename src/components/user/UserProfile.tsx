@@ -43,7 +43,7 @@ export const UserProfile: React.FC<{
   const getStatusColor = (status: string) => {
     switch (status) {
       case "online":
-        return "bg-blue-600";
+        return "bg-orange-600";
       case "timing":
         return "bg-red-500";
       case "resting":

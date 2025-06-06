@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import * as faceapi from "@vladmandic/face-api";
+import * as H from "@vladmandic/human";
 import { toast } from "sonner";
 
 // 1. 인터페이스 정의 제거 및 타입 별칭 사용
@@ -7,12 +7,13 @@ import { toast } from "sonner";
 // type DetectionData extends faceapi.FaceDetection {}
 // type LandmarksData extends faceapi.FaceLandmarks68 {}
 
-// FullFaceDescriptionType 정의 수정
-type FullFaceDescriptionType = {
-  detection: faceapi.FaceDetection;    // faceapi.FaceDetection 직접 사용
-  landmarks: faceapi.FaceLandmarks68;  // faceapi.FaceLandmarks68 직접 사용
-  expressions: faceapi.FaceExpressions;
-};
+// Human 라이브러리 타입 정의
+interface FaceResult {
+  mesh?: number[][];
+  iris?: Array<{ center: number[] }>;
+  emotion?: Array<{ emotion: string; score: number }>;
+  boxScore?: number;
+}
 
 export interface FaceAnalysisResult {
   isDrowsy: boolean;
@@ -20,7 +21,8 @@ export interface FaceAnalysisResult {
   emotion: string;
   ear: number;
   mar: number; // Mouth Aspect Ratio
-  gazeDirection: 'center' | 'left' | 'right' | 'up' | 'down' | 'unknown';
+  isYawning: boolean; // 하품 여부
+  gazeDirection: 'left' | 'right' | 'up' | 'down' | 'center' | 'unknown';
   headPose: {
     yaw: number;    // 좌우 회전
     pitch: number;  // 상하 회전
@@ -40,179 +42,252 @@ interface UseFaceDetectionProps {
   showPreview: boolean;
 }
 
-// 고급 EAR 계산 (더 정확한 눈 감김 비율)
-function computeAdvancedEAR(eye: faceapi.Point[]): number {
-  if (eye.length < 6) {
-    console.warn("⚠️ EAR 계산: 눈 랜드마크 포인트 부족", { points: eye.length });
-    return 0.25; // 기본값
-  }
-  
-  const euclideanDistance = (a: faceapi.Point, b: faceapi.Point) => 
-    Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
-  
-  // 수직 거리들
-  const vertical1 = euclideanDistance(eye[1], eye[5]);
-  const vertical2 = euclideanDistance(eye[2], eye[4]);
-  
-  // 수평 거리
-  const horizontal = euclideanDistance(eye[0], eye[3]);
-  
-  // EAR 계산 (더 정교한 공식)
-  const ear = (vertical1 + vertical2) / (2.0 * horizontal);
-  
-  // 디버깅: 가끔씩 EAR 계산 과정 로그 (5% 확률)
-  if (Math.random() < 0.05) {
-    console.log("👁️ EAR 계산:", {
-      vertical1: vertical1.toFixed(2),
-      vertical2: vertical2.toFixed(2),
-      horizontal: horizontal.toFixed(2),
-      ear: ear.toFixed(3),
-      eyePoints: eye.length
-    });
-  }
-  
-  return ear;
-}
+// Human 라이브러리 설정
+const humanConfig: Partial<H.Config> = {
+  debug: false,
+  backend: 'webgl',
+  modelBasePath: 'https://vladmandic.github.io/human-models/models/',
+  filter: { enabled: true, equalization: false, flip: false },
+  face: { 
+    enabled: true, 
+    detector: { rotation: false, return: true, mask: false }, 
+    mesh: { enabled: true }, 
+    attention: { enabled: true }, 
+    iris: { enabled: true }, 
+    description: { enabled: true }, 
+    emotion: { enabled: true }, 
+    antispoof: { enabled: false }, // 성능 개선을 위해 비활성화
+    liveness: { enabled: false }   // 성능 개선을 위해 비활성화
+  },
+  body: { enabled: false },
+  hand: { enabled: false },
+  object: { enabled: false },
+  segmentation: { enabled: false },
+  gesture: { enabled: false }, // 불필요한 기능 비활성화
+};
 
-// MAR 계산 (입 벌림 비율 - 하품 감지용)
-function computeMAR(mouth: faceapi.Point[]): number {
-  if (mouth.length < 20) return 0; // 기본값
+// EAR (Eye Aspect Ratio) 계산 함수 - Human 라이브러리의 iris 데이터 사용
+const computeEAR = (eyePoints: number[][]): number => {
+  if (!eyePoints || eyePoints.length < 6) return 0.3;
   
-  const euclideanDistance = (a: faceapi.Point, b: faceapi.Point) => 
-    Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2));
+  // 눈의 수직 거리 계산
+  const verticalDist1 = Math.sqrt(
+    Math.pow(eyePoints[1][0] - eyePoints[5][0], 2) + 
+    Math.pow(eyePoints[1][1] - eyePoints[5][1], 2)
+  );
+  const verticalDist2 = Math.sqrt(
+    Math.pow(eyePoints[2][0] - eyePoints[4][0], 2) + 
+    Math.pow(eyePoints[2][1] - eyePoints[4][1], 2)
+  );
   
-  // 입 세로 거리들
-  const vertical1 = euclideanDistance(mouth[13], mouth[19]); // 상단-하단
-  const vertical2 = euclideanDistance(mouth[14], mouth[18]); // 중앙 상-하
-  const vertical3 = euclideanDistance(mouth[15], mouth[17]); // 내부 상-하
+  // 눈의 수평 거리 계산
+  const horizontalDist = Math.sqrt(
+    Math.pow(eyePoints[0][0] - eyePoints[3][0], 2) + 
+    Math.pow(eyePoints[0][1] - eyePoints[3][1], 2)
+  );
   
-  // 입 가로 거리
-  const horizontal = euclideanDistance(mouth[12], mouth[16]); // 좌-우 모서리
+  if (horizontalDist === 0) return 0.3;
   
-  return (vertical1 + vertical2 + vertical3) / (3.0 * horizontal);
-}
+  return (verticalDist1 + verticalDist2) / (2.0 * horizontalDist);
+};
 
-// 머리 자세 추정 (Head Pose Estimation)
-function estimateHeadPose(landmarks: faceapi.FaceLandmarks68): { yaw: number; pitch: number; roll: number } {
-  // 주요 얼굴 포인트들
-  const noseTip = landmarks.getNose()[3]; // 코끝
-  const chin = landmarks.getJawOutline()[8]; // 턱
-  const leftEyeCorner = landmarks.getLeftEye()[0]; // 왼쪽 눈 모서리
-  const rightEyeCorner = landmarks.getRightEye()[3]; // 오른쪽 눈 모서리
-  const leftMouth = landmarks.getMouth()[0]; // 입 왼쪽
-  const rightMouth = landmarks.getMouth()[6]; // 입 오른쪽
+// MAR (Mouth Aspect Ratio) 계산 함수
+const computeMAR = (mouthPoints: number[][]): number => {
+  if (!mouthPoints || mouthPoints.length < 8) return 0.0;
   
-  // Yaw (좌우 회전) 계산
-  const eyeCenter = {
-    x: (leftEyeCorner.x + rightEyeCorner.x) / 2,
-    y: (leftEyeCorner.y + rightEyeCorner.y) / 2
-  };
-  const noseToEyeCenter = noseTip.x - eyeCenter.x;
-  const yaw = Math.atan2(noseToEyeCenter, Math.abs(leftEyeCorner.x - rightEyeCorner.x)) * (180 / Math.PI);
+  // 입의 수직 거리 계산
+  const verticalDist1 = Math.sqrt(
+    Math.pow(mouthPoints[2][0] - mouthPoints[6][0], 2) + 
+    Math.pow(mouthPoints[2][1] - mouthPoints[6][1], 2)
+  );
+  const verticalDist2 = Math.sqrt(
+    Math.pow(mouthPoints[3][0] - mouthPoints[5][0], 2) + 
+    Math.pow(mouthPoints[3][1] - mouthPoints[5][1], 2)
+  );
   
-  // Pitch (상하 회전) 계산
-  const eyeToNose = noseTip.y - eyeCenter.y;
-  const noseToMouth = Math.abs(noseTip.y - (leftMouth.y + rightMouth.y) / 2);
-  const pitch = Math.atan2(eyeToNose, noseToMouth) * (180 / Math.PI);
+  // 입의 수평 거리 계산
+  const horizontalDist = Math.sqrt(
+    Math.pow(mouthPoints[0][0] - mouthPoints[4][0], 2) + 
+    Math.pow(mouthPoints[0][1] - mouthPoints[4][1], 2)
+  );
   
-  // Roll (기울기) 계산
-  const eyeSlope = (rightEyeCorner.y - leftEyeCorner.y) / (rightEyeCorner.x - leftEyeCorner.x);
-  const roll = Math.atan(eyeSlope) * (180 / Math.PI);
+  if (horizontalDist === 0) return 0.0;
   
+  return (verticalDist1 + verticalDist2) / (2.0 * horizontalDist);
+};
+
+// 머리 자세 추정 (개선된 버전)
+const estimateHeadPose = (face: FaceResult): { yaw: number; pitch: number; roll: number } => {
+  if (!face.mesh || face.mesh.length < 468) {
+    return { yaw: 0, pitch: 0, roll: 0 };
+  }
+
+  // 더 정확한 얼굴 랜드마크 포인트들 사용
+  const noseTip = face.mesh[1];     // 코끝
+  const noseBase = face.mesh[168];  // 코 기저
+  const leftEyeOuter = face.mesh[33];   // 왼쪽 눈 외측
+  const rightEyeOuter = face.mesh[263]; // 오른쪽 눈 외측
+  const leftEyeInner = face.mesh[133];  // 왼쪽 눈 내측
+  const rightEyeInner = face.mesh[362]; // 오른쪽 눈 내측
+  const chin = face.mesh[175];      // 턱 끝
+  const forehead = face.mesh[10];   // 이마
+
+  // 안전성 검사
+  if (!noseTip || !noseBase || !leftEyeOuter || !rightEyeOuter || 
+      !leftEyeInner || !rightEyeInner || !chin || !forehead) {
+    return { yaw: 0, pitch: 0, roll: 0 };
+  }
+
+  // 눈 중심점 계산
+  const eyeCenter = [
+    (leftEyeOuter[0] + rightEyeOuter[0] + leftEyeInner[0] + rightEyeInner[0]) / 4,
+    (leftEyeOuter[1] + rightEyeOuter[1] + leftEyeInner[1] + rightEyeInner[1]) / 4
+  ];
+
+  // Yaw (좌우 회전) - 코와 눈 중심의 수평 오프셋 기반
+  const faceWidth = Math.abs(rightEyeOuter[0] - leftEyeOuter[0]);
+  const noseOffsetX = noseTip[0] - eyeCenter[0];
+  let yaw = (noseOffsetX / faceWidth) * 60; // 정규화된 각도
+  yaw = Math.max(-45, Math.min(45, yaw)); // -45도 ~ +45도로 제한
+
+  // Pitch (상하 회전) - 이마-눈-턱의 수직 관계 기반
+  const faceHeight = Math.abs(forehead[1] - chin[1]);
+  const eyeToForeheadDist = Math.abs(forehead[1] - eyeCenter[1]);
+  const eyeToChinDist = Math.abs(chin[1] - eyeCenter[1]);
+  
+  // 정상적인 비율에서의 편차 계산
+  const normalRatio = 0.4; // 정상적으로 눈이 얼굴 높이의 40% 위치
+  const currentRatio = eyeToForeheadDist / faceHeight;
+  let pitch = (currentRatio - normalRatio) * 150; // 정규화된 각도
+  pitch = Math.max(-30, Math.min(30, pitch)); // -30도 ~ +30도로 제한
+
+  // Roll (기울기) - 두 눈의 기울기
+  const eyeVector = [rightEyeOuter[0] - leftEyeOuter[0], rightEyeOuter[1] - leftEyeOuter[1]];
+  let roll = Math.atan2(eyeVector[1], eyeVector[0]) * (180 / Math.PI);
+  roll = Math.max(-30, Math.min(30, roll)); // -30도 ~ +30도로 제한
+
   return { yaw, pitch, roll };
-}
+};
 
-// 고급 시선 추적 알고리즘
-function advancedGazeEstimation(landmarks: faceapi.FaceLandmarks68): 'center' | 'left' | 'right' | 'up' | 'down' | 'unknown' {
-  const leftEye = landmarks.getLeftEye();
-  const rightEye = landmarks.getRightEye();
-  const nose = landmarks.getNose();
-  
-  if (!leftEye || !rightEye || !nose) return 'unknown';
-  
-  // 눈동자 중심 추정
-  const leftEyeCenter = {
-    x: leftEye.reduce((sum, p) => sum + p.x, 0) / leftEye.length,
-    y: leftEye.reduce((sum, p) => sum + p.y, 0) / leftEye.length
-  };
-  
-  const rightEyeCenter = {
-    x: rightEye.reduce((sum, p) => sum + p.x, 0) / rightEye.length,
-    y: rightEye.reduce((sum, p) => sum + p.y, 0) / rightEye.length
-  };
-  
-  const noseTip = nose[3];
-  const eyeCenter = {
-    x: (leftEyeCenter.x + rightEyeCenter.x) / 2,
-    y: (leftEyeCenter.y + rightEyeCenter.y) / 2
-  };
-  
-  // 시선 벡터 계산
-  const gazeVector = {
-    x: noseTip.x - eyeCenter.x,
-    y: noseTip.y - eyeCenter.y
-  };
-  
-  // 임계값 설정 (더 정확한 판단)
-  const horizontalThreshold = 8;
-  const verticalThreshold = 6;
-  
-  if (Math.abs(gazeVector.x) > horizontalThreshold) {
-    return gazeVector.x > 0 ? 'right' : 'left';
+// 시선 방향 추정 (개선된 버전)
+const estimateGazeDirection = (face: FaceResult): 'left' | 'right' | 'up' | 'down' | 'center' | 'unknown' => {
+  // iris 데이터 검증
+  if (!face.iris || face.iris.length < 2) {
+    // console.log("👁️ iris 데이터 없음:", { hasIris: !!face.iris, length: face.iris?.length });
+    return 'unknown';
   }
-  if (Math.abs(gazeVector.y) > verticalThreshold) {
-    return gazeVector.y > 0 ? 'down' : 'up';
+
+  const leftIris = face.iris[0];
+  const rightIris = face.iris[1];
+
+  if (!leftIris || !rightIris || !leftIris.center || !rightIris.center) {
+    console.log("👁️ iris center 데이터 부족:", { 
+      leftIris: !!leftIris, 
+      rightIris: !!rightIris,
+      leftCenter: !!leftIris?.center,
+      rightCenter: !!rightIris?.center
+    });
+    return 'unknown';
   }
+
+  // Human 라이브러리의 mesh를 사용하여 눈 영역 계산
+  if (!face.mesh || face.mesh.length < 468) {
+    console.log("👁️ mesh 데이터 부족:", { hasMesh: !!face.mesh, length: face.mesh?.length });
+    return 'unknown';
+  }
+  
+  // 더 정확한 눈 랜드마크 사용
+  const leftEyeInner = face.mesh[133];   // 왼쪽 눈 내측
+  const leftEyeOuter = face.mesh[33];    // 왼쪽 눈 외측
+  const rightEyeInner = face.mesh[362];  // 오른쪽 눈 내측
+  const rightEyeOuter = face.mesh[263];  // 오른쪽 눈 외측
+  
+  if (!leftEyeInner || !leftEyeOuter || !rightEyeInner || !rightEyeOuter) {
+    console.log("👁️ 눈 랜드마크 데이터 부족");
+    return 'unknown';
+  }
+  
+  // 왼쪽 눈과 오른쪽 눈의 중심점 계산
+  const leftEyeCenter = [(leftEyeInner[0] + leftEyeOuter[0]) / 2, (leftEyeInner[1] + leftEyeOuter[1]) / 2];
+  const rightEyeCenter = [(rightEyeInner[0] + rightEyeOuter[0]) / 2, (rightEyeInner[1] + rightEyeOuter[1]) / 2];
+  
+  // 각 눈에서 홍채의 상대적 위치 계산
+  const leftGazeOffsetX = leftIris.center[0] - leftEyeCenter[0];
+  const leftGazeOffsetY = leftIris.center[1] - leftEyeCenter[1];
+  const rightGazeOffsetX = rightIris.center[0] - rightEyeCenter[0];
+  const rightGazeOffsetY = rightIris.center[1] - rightEyeCenter[1];
+  
+  // 두 눈의 평균 시선 방향 계산
+  const avgGazeX = (leftGazeOffsetX + rightGazeOffsetX) / 2;
+  const avgGazeY = (leftGazeOffsetY + rightGazeOffsetY) / 2;
+  
+  // 눈 크기 기반 적응형 임계값 계산
+  const eyeWidth = Math.abs(leftEyeOuter[0] - leftEyeInner[0]);
+  const thresholdX = eyeWidth * 0.15; // 눈 너비의 15%
+  const thresholdY = eyeWidth * 0.1;  // 눈 너비의 10%
+  
+  console.log("👁️ 시선 분석:", {
+    leftGazeOffset: [leftGazeOffsetX.toFixed(2), leftGazeOffsetY.toFixed(2)],
+    rightGazeOffset: [rightGazeOffsetX.toFixed(2), rightGazeOffsetY.toFixed(2)],
+    avgGaze: [avgGazeX.toFixed(2), avgGazeY.toFixed(2)],
+    thresholds: [thresholdX.toFixed(2), thresholdY.toFixed(2)],
+    eyeWidth: eyeWidth.toFixed(2)
+  });
+  
+  // 시선 방향 결정
+  if (Math.abs(avgGazeX) < thresholdX && Math.abs(avgGazeY) < thresholdY) return 'center';
+  if (avgGazeX > thresholdX) return 'right';
+  if (avgGazeX < -thresholdX) return 'left';
+  if (avgGazeY > thresholdY) return 'down';
+  if (avgGazeY < -thresholdY) return 'up';
   
   return 'center';
-}
+};
 
-// 집중도 점수 계산 알고리즘
-function calculateAttentionScore(
+// 주의집중도 점수 계산
+const calculateAttentionScore = (
   ear: number, 
   mar: number, 
   headPose: { yaw: number; pitch: number; roll: number },
-  gazeDirection: string,
-  blinkRate: number
-): number {
+  gaze: string,
+  blinkRate: number,
+  gazeStability: number // 시선 안정성 점수 (0-100)
+): number => {
   let score = 100;
-  
-  // EAR 기반 감점 (눈 감김)
-  if (ear < 0.15) score -= 40; // 심각한 졸음
-  else if (ear < 0.20) score -= 25; // 중간 졸음
-  else if (ear < 0.25) score -= 10; // 가벼운 졸음
-  
-  // MAR 기반 감점 (하품)
-  if (mar > 0.7) score -= 30; // 하품
-  else if (mar > 0.5) score -= 15; // 입 벌림
-  
-  // 머리 자세 기반 감점
-  const totalHeadMovement = Math.abs(headPose.yaw) + Math.abs(headPose.pitch) + Math.abs(headPose.roll);
-  if (totalHeadMovement > 45) score -= 25; // 심한 고개 움직임
-  else if (totalHeadMovement > 25) score -= 15; // 중간 고개 움직임
-  
-  // 시선 방향 기반 감점
-  if (gazeDirection !== 'center') score -= 20;
-  
-  // 깜빡임 빈도 기반 감점 (개선된 로직)
-  if (blinkRate < 8) score -= 35; // 매우 졸림 (심각한 깜빡임 부족)
-  else if (blinkRate < 12) score -= 20; // 졸림 (깜빡임 부족)
-  else if (blinkRate > 35) score -= 25; // 매우 긴장/스트레스 (과도한 깜빡임)
-  else if (blinkRate > 25) score -= 10; // 약간 긴장 (높은 깜빡임)
-  // 12-25회/분은 정상 범위로 감점하지 않음
-  
-  return Math.max(0, Math.min(100, score));
-}
 
-// 피로도 레벨 판단
-function assessFatigueLevel(attentionScore: number, ear: number, consecutiveDrowsyFrames: number): 'low' | 'medium' | 'high' {
-  if (attentionScore < 30 || ear < 0.15 || consecutiveDrowsyFrames > 10) {
-    return 'high';
-  } else if (attentionScore < 60 || ear < 0.20 || consecutiveDrowsyFrames > 5) {
-    return 'medium';
-  }
+  // 눈 감김 정도 (-40점)
+  if (ear < 0.15) score -= 40;
+  else if (ear < 0.20) score -= 20;
+  else if (ear < 0.25) score -= 10;
+
+  // 입 벌림 정도 (-20점)
+  if (mar > 0.5) score -= 20;
+  else if (mar > 0.3) score -= 10;
+
+  // 머리 자세 (-30점)
+  const headAngle = Math.abs(headPose.yaw) + Math.abs(headPose.pitch);
+  if (headAngle > 30) score -= 30;
+  else if (headAngle > 20) score -= 15;
+  else if (headAngle > 10) score -= 5;
+
+  // 시선 안정성 (-20점) - 시선이 얼마나 일정한 곳에 머물러 있는지
+  const gazeStabilityPenalty = Math.round((100 - gazeStability) * 0.2); // 0-20점 차감
+  score -= gazeStabilityPenalty;
+
+  // 깜빡임 빈도 (-15점) - 10초 단위 측정에 맞게 조정
+  if (blinkRate < 6) score -= 15;      // 10초에 1회 미만 (분당 6회 미만) - 매우 졸림
+  else if (blinkRate < 12) score -= 10; // 10초에 2회 미만 (분당 12회 미만) - 졸림
+  else if (blinkRate > 36) score -= 10; // 10초에 6회 초과 (분당 36회 초과) - 과도한 깜빡임
+
+  return Math.max(0, Math.min(100, score));
+};
+
+// 피로도 레벨 평가
+const assessFatigueLevel = (attentionScore: number, ear: number, consecutiveDrowsyFrames: number): 'low' | 'medium' | 'high' => {
+  if (attentionScore < 40 || ear < 0.15 || consecutiveDrowsyFrames > 20) return 'high';   // 3초 지속
+  if (attentionScore < 70 || ear < 0.20 || consecutiveDrowsyFrames > 10) return 'medium'; // 1.5초 지속
   return 'low';
-}
+};
 
 export const useFaceDetection = ({
   videoRef,
@@ -241,117 +316,296 @@ export const useFaceDetection = ({
   const frameCountRef = useRef(0);
   const animationFrameRef = useRef<number | null>(null);
   
-  const lastFullDetectionsRef = useRef<FullFaceDescriptionType[]>([]); 
-  const smoothedBoxesRef = useRef<Map<number, faceapi.Rect>>(new Map());
+  const lastDetectionsRef = useRef<H.Result | null>(null);
   const isDetectingRef = useRef(false);
+  const humanRef = useRef<H.Human | null>(null);
+
+  // 깜빡임 관련 ref로 순환 참조 방지
+  const blinkTimestampsRef = useRef<number[]>([]);
+  const isEyeClosedRef = useRef(false);
+  const lastBlinkTimeRef = useRef(0);
+
+  // 상태 히스토리도 ref로 관리하여 성능 개선
+  const consecutiveDrowsyFramesRef = useRef(0);
+  const earHistoryRef = useRef<number[]>([]);
+  const attentionHistoryRef = useRef<number[]>([]);
+  
+  // 시선 안정성 추적을 위한 히스토리
+  const gazeHistoryRef = useRef<string[]>([]);
+  const GAZE_HISTORY_LENGTH = 30; // 최근 30프레임의 시선 방향 추적
+  
+  // 졸음 감지를 위한 고급 상태 추적
+  const eyeClosedDurationRef = useRef(0); // 눈이 감긴 지속 시간
+  const slowBlinkCountRef = useRef(0); // 느린 깜빡임 횟수
+  const lastEyeStateRef = useRef<'open' | 'closed'>('open'); // 이전 눈 상태
+  const eyeStateChangeTimeRef = useRef(Date.now()); // 마지막 눈 상태 변화 시간
+  const headDropCountRef = useRef(0); // 머리가 떨어지는 횟수
+  const lastHeadPitchRef = useRef(0); // 이전 머리 각도
+  
+  // 초기 프레임 안정화를 위한 카운터
+  const stableFrameCountRef = useRef(0);
+  const STABLE_FRAME_THRESHOLD = 10; // 10프레임 후부터 안정적인 결과 사용
+
+  // 시선 안정성 계산 함수
+  const calculateGazeStability = useCallback((currentGaze: string): number => {
+    // 현재 시선을 히스토리에 추가
+    gazeHistoryRef.current.push(currentGaze);
+    
+    // 히스토리 길이 제한
+    if (gazeHistoryRef.current.length > GAZE_HISTORY_LENGTH) {
+      gazeHistoryRef.current = gazeHistoryRef.current.slice(-GAZE_HISTORY_LENGTH);
+    }
+    
+    // 최소 10개의 데이터가 있어야 계산
+    if (gazeHistoryRef.current.length < 10) {
+      return 70; // 초기값은 중간 정도
+    }
+    
+    // 가장 빈번한 시선 방향 찾기
+    const gazeCounts: { [key: string]: number } = {};
+    gazeHistoryRef.current.forEach(gaze => {
+      gazeCounts[gaze] = (gazeCounts[gaze] || 0) + 1;
+    });
+    
+    const mostFrequentGaze = Object.keys(gazeCounts).reduce((a, b) => 
+      gazeCounts[a] > gazeCounts[b] ? a : b
+    );
+    
+    // 가장 빈번한 방향의 비율 계산
+    const mostFrequentCount = gazeCounts[mostFrequentGaze];
+    const stabilityRatio = mostFrequentCount / gazeHistoryRef.current.length;
+    
+    // 안정성 점수 계산 (0-100)
+    // 80% 이상 일정하면 만점, 50% 미만이면 0점
+    let stabilityScore = 0;
+    if (stabilityRatio >= 0.8) {
+      stabilityScore = 100;
+    } else if (stabilityRatio >= 0.7) {
+      stabilityScore = 85;
+    } else if (stabilityRatio >= 0.6) {
+      stabilityScore = 70;
+    } else if (stabilityRatio >= 0.5) {
+      stabilityScore = 50;
+    } else {
+      stabilityScore = Math.round(stabilityRatio * 100);
+    }
+    
+    // console.log("👁️ 시선 안정성 분석:", {
+    //   currentGaze,
+    //   mostFrequentGaze,
+    //   stabilityRatio: stabilityRatio.toFixed(2),
+    //   stabilityScore,
+    //   historyLength: gazeHistoryRef.current.length
+    // });
+    
+    return stabilityScore;
+  }, [GAZE_HISTORY_LENGTH]);
+
+  // 고급 졸음 감지 함수
+  const detectAdvancedDrowsiness = useCallback((
+    ear: number, 
+    mar: number, 
+    headPose: { yaw: number; pitch: number; roll: number },
+    blinkRate: number
+  ): boolean => {
+    const currentTime = Date.now();
+    const DROWSY_EAR_THRESHOLD = 0.18; // 졸음 임계값 (더 엄격)
+    const SLOW_BLINK_DURATION = 500; // 느린 깜빡임 기준 (0.5초 이상)
+    const HEAD_DROP_THRESHOLD = 15; // 머리 떨어짐 임계값
+    const SUSTAINED_CLOSED_THRESHOLD = 2000; // 지속적으로 눈 감음 기준 (2초)
+    
+    // 1. 눈 상태 변화 추적
+    const currentEyeState = ear < DROWSY_EAR_THRESHOLD ? 'closed' : 'open';
+    
+    if (currentEyeState !== lastEyeStateRef.current) {
+      const stateDuration = currentTime - eyeStateChangeTimeRef.current;
+      
+      // 느린 깜빡임 감지 (눈이 오래 감겨있었던 경우)
+      if (lastEyeStateRef.current === 'closed' && stateDuration > SLOW_BLINK_DURATION) {
+        slowBlinkCountRef.current += 1;
+        console.log("😴 느린 깜빡임 감지:", { duration: stateDuration, count: slowBlinkCountRef.current });
+      }
+      
+      lastEyeStateRef.current = currentEyeState;
+      eyeStateChangeTimeRef.current = currentTime;
+      
+      // 눈이 다시 뜨면 지속시간 리셋
+      if (currentEyeState === 'open') {
+        eyeClosedDurationRef.current = 0;
+      }
+    }
+    
+    // 2. 지속적인 눈 감음 추적
+    if (currentEyeState === 'closed') {
+      eyeClosedDurationRef.current = currentTime - eyeStateChangeTimeRef.current;
+    }
+    
+    // 3. 머리 떨어짐 감지
+    const headPitchChange = headPose.pitch - lastHeadPitchRef.current;
+    if (headPitchChange > 5 && headPose.pitch > HEAD_DROP_THRESHOLD) {
+      headDropCountRef.current += 1;
+      console.log("📉 머리 떨어짐 감지:", { 
+        pitchChange: headPitchChange.toFixed(1), 
+        currentPitch: headPose.pitch.toFixed(1),
+        count: headDropCountRef.current 
+      });
+    }
+    lastHeadPitchRef.current = headPose.pitch;
+    
+    // 4. 입 벌림 (하품) 감지
+    const isYawning = mar > 0.6; // 하품 임계값
+    
+    // 5. 종합적인 졸음 판정
+    let drowsinessScore = 0;
+    
+    // 지속적으로 눈 감음 (가장 강력한 지표)
+    if (eyeClosedDurationRef.current > SUSTAINED_CLOSED_THRESHOLD) {
+      drowsinessScore += 40;
+      console.log("💤 지속적 눈 감음:", { duration: eyeClosedDurationRef.current });
+    }
+    
+    // 느린 깜빡임 패턴 (최근 20초간 3회 이상)
+    if (slowBlinkCountRef.current >= 3) {
+      drowsinessScore += 25;
+      console.log("🐌 느린 깜빡임 패턴:", { count: slowBlinkCountRef.current });
+    }
+    
+    // 머리 떨어짐 (최근 30초간 2회 이상)
+    if (headDropCountRef.current >= 2) {
+      drowsinessScore += 20;
+      console.log("📉 반복적 머리 떨어짐:", { count: headDropCountRef.current });
+    }
+    
+    // 낮은 깜빡임 빈도 (졸릴 때 깜빡임이 줄어듦)
+    if (blinkRate < 8) {
+      drowsinessScore += 15;
+      // console.log("👁️ 낮은 깜빡임 빈도:", { rate: blinkRate });
+    }
+    
+    // 하품
+    if (isYawning) {
+      drowsinessScore += 10;
+      console.log("🥱 하품 감지:", { mar: mar.toFixed(3) });
+    }
+    
+    // 20초마다 카운터 리셋 (슬라이딩 윈도우)
+    if (currentTime % 20000 < 150) { // 감지 주기가 150ms이므로
+      slowBlinkCountRef.current = Math.max(0, slowBlinkCountRef.current - 1);
+      headDropCountRef.current = Math.max(0, headDropCountRef.current - 1);
+    }
+    
+    const isDrowsy = drowsinessScore >= 30; // 30점 이상이면 졸음
+    
+    if (isDrowsy) {
+      console.log("😴 고급 졸음 감지!", {
+        score: drowsinessScore,
+        factors: {
+          sustainedClosed: eyeClosedDurationRef.current > SUSTAINED_CLOSED_THRESHOLD,
+          slowBlinks: slowBlinkCountRef.current >= 3,
+          headDrops: headDropCountRef.current >= 2,
+          lowBlinkRate: blinkRate < 8,
+          yawning: isYawning
+        }
+      });
+    }
+    
+    return isDrowsy;
+  }, []);
 
   // 깜빡임 감지 함수
   const detectBlink = useCallback((ear: number): number => {
     const currentTime = Date.now();
-    const BLINK_THRESHOLD = 0.25; // 임계값을 0.21에서 0.25로 상향 조정
-    const MIN_BLINK_DURATION = 100; // 최소 지속시간을 80ms에서 100ms로 조정
-    const MAX_BLINK_DURATION = 500; // 최대 지속시간을 400ms에서 500ms로 조정
-    
-    // 디버깅: EAR 값과 상태 로깅 (10프레임마다)
-    if (Math.random() < 0.1) { // 10% 확률로 로그 출력
-      console.log("👁️ 깜빡임 감지:", {
-        ear: ear.toFixed(3),
-        threshold: BLINK_THRESHOLD,
-        isEyeClosed,
-        timeSinceLastBlink: currentTime - lastBlinkTime
-      });
-    }
+    const BLINK_THRESHOLD = 0.22; // 임계값을 약간 낮춰서 더 정확한 감지
+    const MIN_BLINK_DURATION = 80;  // 최소 지속시간을 약간 줄임
+    const MAX_BLINK_DURATION = 600; // 최대 지속시간을 약간 늘림
     
     // 눈이 감긴 상태 감지
-    if (ear < BLINK_THRESHOLD && !isEyeClosed) {
+    if (ear < BLINK_THRESHOLD && !isEyeClosedRef.current) {
       console.log("👁️ 눈 감김 감지:", { ear: ear.toFixed(3), time: currentTime });
+      isEyeClosedRef.current = true;
+      lastBlinkTimeRef.current = currentTime;
       setIsEyeClosed(true);
       setLastBlinkTime(currentTime);
     }
     // 눈이 다시 뜬 상태 감지 (깜빡임 완료)
-    else if (ear >= BLINK_THRESHOLD && isEyeClosed) {
-      const blinkDuration = currentTime - lastBlinkTime;
+    else if (ear >= BLINK_THRESHOLD && isEyeClosedRef.current) {
+      const blinkDuration = currentTime - lastBlinkTimeRef.current;
       console.log("👁️ 눈 뜸 감지:", { 
         ear: ear.toFixed(3), 
         duration: blinkDuration,
         isValid: blinkDuration >= MIN_BLINK_DURATION && blinkDuration <= MAX_BLINK_DURATION
       });
       
-      // 유효한 깜빡임인지 확인 (너무 짧거나 길지 않은지)
+      // 유효한 깜빡임인지 확인
       if (blinkDuration >= MIN_BLINK_DURATION && blinkDuration <= MAX_BLINK_DURATION) {
         console.log("✅ 유효한 깜빡임 감지됨!", { duration: blinkDuration });
-        setBlinkTimestamps(prev => {
-          const newTimestamps = [...prev, currentTime];
-          const filtered = newTimestamps.filter(timestamp => currentTime - timestamp <= 60000);
-          console.log("📊 깜빡임 기록 업데이트:", { 
-            newCount: filtered.length,
-            recentBlinks: filtered.slice(-5)
-          });
-          return filtered;
-        });
-      } else {
-        console.log("❌ 무효한 깜빡임:", { 
-          duration: blinkDuration,
-          tooShort: blinkDuration < MIN_BLINK_DURATION,
-          tooLong: blinkDuration > MAX_BLINK_DURATION
-        });
+        const newTimestamps = [...blinkTimestampsRef.current, currentTime];
+        const filtered = newTimestamps.filter(timestamp => currentTime - timestamp <= 10000); // 10초로 변경
+        blinkTimestampsRef.current = filtered;
+        setBlinkTimestamps(filtered);
       }
       
+      isEyeClosedRef.current = false;
       setIsEyeClosed(false);
     }
     
-    // 현재 1분간 깜빡임 횟수 계산
-    const recentBlinks = blinkTimestamps.filter(timestamp => currentTime - timestamp <= 60000);
+    // 현재 10초간 깜빡임 횟수 계산 후 분당 환산
+    const MEASUREMENT_WINDOW = 10000; // 10초
+    const recentBlinks = blinkTimestampsRef.current.filter(timestamp => currentTime - timestamp <= MEASUREMENT_WINDOW);
     
-    // 깜빡임 카운트 변경 시 로그
-    if (recentBlinks.length !== blinkTimestamps.length) {
-      console.log("📈 깜빡임 카운트 업데이트:", { 
-        currentCount: recentBlinks.length,
-        totalRecords: blinkTimestamps.length
-      });
-    }
+    // 10초간 깜빡임을 분당 깜빡임으로 환산 (10초 * 6 = 1분)
+    const blinksPer10Seconds = recentBlinks.length;
+    const blinksPerMinute = Math.round(blinksPer10Seconds * 6);
     
-    return recentBlinks.length;
-  }, [isEyeClosed, lastBlinkTime, blinkTimestamps]);
-
-  // 깜빡임 기반 졸음 판단
-  const assessDrowsinessFromBlinks = useCallback((blinksPerMinute: number): { isDrowsyFromBlinks: boolean; blinkStatus: string } => {
-    if (blinksPerMinute < 8) {
-      return { isDrowsyFromBlinks: true, blinkStatus: '매우 졸림' };
-    } else if (blinksPerMinute < 12) {
-      return { isDrowsyFromBlinks: true, blinkStatus: '졸림' };
-    } else if (blinksPerMinute <= 25) {
-      return { isDrowsyFromBlinks: false, blinkStatus: '정상' };
-    } else if (blinksPerMinute <= 35) {
-      return { isDrowsyFromBlinks: false, blinkStatus: '약간 긴장' };
-    } else {
-      return { isDrowsyFromBlinks: false, blinkStatus: '매우 긴장' };
-    }
+    return blinksPerMinute;
   }, []);
 
+  // Human 라이브러리 초기화
+  useEffect(() => {
+    const initializeHuman = async () => {
+      try {
+        console.log("🧠 Human 라이브러리 초기화 시작...");
+        const human = new H.Human(humanConfig);
+        humanRef.current = human;
+        
+        await human.load();
+        console.log("🎯 Human 모델 로딩 완료!");
+        
+        await human.warmup();
+        console.log("🚀 Human 라이브러리 준비 완료!");
+        
+        setIsModelLoaded(true);
+      } catch (error) {
+        console.error("❌ Human 라이브러리 초기화 실패:", error);
+        setModelLoadingError("AI 모델을 로드하지 못했습니다.");
+        toast.error("AI 모델 로딩에 실패했습니다.");
+      }
+    };
+
+    initializeHuman();
+
+    return () => {
+      if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
+      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    };
+  }, []);
+
+  // 카메라 준비 상태 체크
   useEffect(() => {
     const video = videoRef.current;
     const canvas = canvasRef.current;
     if (!video || !canvas) return;
 
     const updateCanvasGeometry = () => {
-      console.log("🎨 updateCanvasGeometry 호출됨:", {
+      console.log("🎨 캔버스 지오메트리 업데이트:", {
         videoWidth: video.videoWidth,
         videoHeight: video.videoHeight,
         clientWidth: video.clientWidth,
         clientHeight: video.clientHeight,
-        readyState: video.readyState,
-        currentTime: video.currentTime
+        readyState: video.readyState
       });
 
-      if (!video.videoWidth || !video.videoHeight) {
-        console.warn("⚠️ 비디오 원본 크기 정보 없음, 대기 중...");
-        setIsCameraReady(false);
-        return;
-      }
-
-      if (video.clientWidth === 0 || video.clientHeight === 0) {
-        console.warn("⚠️ 비디오 요소 크기 정보 없음, 대기 중...");
+      if (!video.videoWidth || !video.videoHeight || video.clientWidth === 0 || video.clientHeight === 0) {
         setIsCameraReady(false);
         return;
       }
@@ -359,47 +613,22 @@ export const useFaceDetection = ({
       const devicePixelRatio = window.devicePixelRatio || 1;
       const videoClientWidth = video.clientWidth;
       const videoClientHeight = video.clientHeight;
-      const videoAspectRatio = video.videoWidth / video.videoHeight;
-      const clientAspectRatio = videoClientWidth / videoClientHeight;
-      let renderedVideoWidth, renderedVideoHeight, offsetX, offsetY;
-
-      if (videoAspectRatio > clientAspectRatio) {
-        renderedVideoWidth = videoClientWidth;
-        renderedVideoHeight = videoClientWidth / videoAspectRatio;
-        offsetX = 0;
-        offsetY = (videoClientHeight - renderedVideoHeight) / 2;
-      } else {
-        renderedVideoHeight = videoClientHeight;
-        renderedVideoWidth = videoClientHeight * videoAspectRatio;
-        offsetY = 0;
-        offsetX = (videoClientWidth - renderedVideoWidth) / 2;
-      }
-
-      console.log("✅ 캔버스 지오메트리 계산 완료:", {
-        비디오원본: `${video.videoWidth}x${video.videoHeight}`,
-        비디오요소: `${videoClientWidth}x${videoClientHeight}`,
-        렌더링영역: `${Math.round(renderedVideoWidth)}x${Math.round(renderedVideoHeight)}`,
-        오프셋: `${Math.round(offsetX)}, ${Math.round(offsetY)}`,
-        비율차이: videoAspectRatio > clientAspectRatio ? '가로레터박스' : '세로레터박스'
-      });
-
-      canvas.style.width = `${renderedVideoWidth}px`;
-      canvas.style.height = `${renderedVideoHeight}px`;
-      canvas.style.left = `${offsetX}px`;
-      canvas.style.top = `${offsetY}px`;
+      
+      canvas.style.width = `${videoClientWidth}px`;
+      canvas.style.height = `${videoClientHeight}px`;
       canvas.style.position = 'absolute';
+      canvas.style.top = '0';
+      canvas.style.left = '0';
 
-      canvas.width = Math.round(renderedVideoWidth * devicePixelRatio);
-      canvas.height = Math.round(renderedVideoHeight * devicePixelRatio);
+      canvas.width = Math.round(videoClientWidth * devicePixelRatio);
+      canvas.height = Math.round(videoClientHeight * devicePixelRatio);
 
       const ctx = canvas.getContext('2d');
       if (ctx) {
         ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
       }
       
-      faceapi.matchDimensions(canvas, { width: renderedVideoWidth, height: renderedVideoHeight });
-      
-      console.log("✅ 카메라 준비 완료 설정");
+      console.log("✅ 카메라 준비 완료");
       setIsCameraReady(true);
     };
 
@@ -408,8 +637,6 @@ export const useFaceDetection = ({
     video.addEventListener('loadedmetadata', updateCanvasGeometry);
     video.addEventListener('play', updateCanvasGeometry);
     video.addEventListener('resize', updateCanvasGeometry);
-    
-    // 추가: 비디오 스트림 변경 시에도 지오메트리 업데이트
     video.addEventListener('loadeddata', updateCanvasGeometry);
 
     if (video.videoWidth && video.videoHeight && video.clientWidth && video.clientHeight) {
@@ -425,102 +652,66 @@ export const useFaceDetection = ({
       video.removeEventListener('loadeddata', updateCanvasGeometry);
       setIsCameraReady(false);
     };
-  }, [videoRef, canvasRef, isCameraReady]);
+  }, [videoRef, canvasRef]);
 
   const memoizedStopDetection = useCallback(() => {
-    console.log("🛑 얼굴 인식 중지 요청 (memoized)");
+    console.log("🛑 얼굴 인식 중지");
     setIsDetecting(false);
     isDetectingRef.current = false;
     if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
     detectionIntervalRef.current = null;
     if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
     animationFrameRef.current = null;
+    
     if (canvasRef.current) {
       const ctx = canvasRef.current.getContext('2d');
       if (ctx) {
-        const cssDrawingWidth = parseFloat(canvasRef.current.style.width) || 0;
-        const cssDrawingHeight = parseFloat(canvasRef.current.style.height) || 0;
-        if (cssDrawingWidth > 0 && cssDrawingHeight > 0) {
-            ctx.clearRect(0, 0, cssDrawingWidth, cssDrawingHeight);
-        }
+        const canvas = canvasRef.current;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
       }
     }
-    lastFullDetectionsRef.current = [];
+    
+    lastDetectionsRef.current = null;
     frameCountRef.current = 0;
     setConsecutiveDrowsyFrames(0);
     setEarHistory([]);
     setAttentionHistory([]);
-    // 깜빡임 관련 상태 초기화
     setBlinkTimestamps([]);
     setIsEyeClosed(false);
     setLastBlinkTime(0);
-    smoothedBoxesRef.current.clear();
+    
+    // ref 초기화 추가
+    blinkTimestampsRef.current = [];
+    isEyeClosedRef.current = false;
+    lastBlinkTimeRef.current = 0;
+    consecutiveDrowsyFramesRef.current = 0;
+    earHistoryRef.current = [];
+    attentionHistoryRef.current = [];
+    gazeHistoryRef.current = [];
+    stableFrameCountRef.current = 0;
+    
+    // 고급 졸음 감지 상태 초기화
+    eyeClosedDurationRef.current = 0;
+    slowBlinkCountRef.current = 0;
+    lastEyeStateRef.current = 'open';
+    eyeStateChangeTimeRef.current = Date.now();
+    headDropCountRef.current = 0;
+    lastHeadPitchRef.current = 0;
   }, [canvasRef]);
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (video) {
-      const handleStreamChange = () => {
-        console.log("📹 비디오 스트림 변경 감지 (loadeddata)");
-        setIsCameraReady(false); 
-        if (isDetectingRef.current) {
-          memoizedStopDetection();
-        }
-      };
-      video.addEventListener('loadeddata', handleStreamChange);
-      return () => {
-        video.removeEventListener('loadeddata', handleStreamChange);
-      };
-    }
-  }, [videoRef, memoizedStopDetection]);
-
-  useEffect(() => {
-    const loadModels = async () => {
-      try {
-        console.log("🧠 AI 모델 로딩 시작...");
-        await faceapi.nets.ssdMobilenetv1.loadFromUri('/models');
-        await faceapi.nets.faceLandmark68Net.loadFromUri('/models');
-        await faceapi.nets.faceExpressionNet.loadFromUri('/models');
-        setIsModelLoaded(true); console.log("🎯 모든 AI 모델 로딩 완료!");
-      } catch (error) {
-        console.error("❌ 모델 로딩 실패:", error);
-        setModelLoadingError("AI 모델을 로드하지 못했습니다.");
-        toast.error("AI 모델 로딩에 실패했습니다.");
-      }
-    };
-    loadModels();
-    return () => {
-      if (detectionIntervalRef.current) clearInterval(detectionIntervalRef.current);
-      if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
-    };
-  }, []);
-  
   const drawDetections = useCallback((
     canvas: HTMLCanvasElement,
-    fullDetections: FullFaceDescriptionType[],
-    videoForOriginalDimsRef: React.RefObject<HTMLVideoElement>
+    result: H.Result | null
   ) => {
     const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    if (!ctx || !result) return;
 
-    const dpr = window.devicePixelRatio || 1;
-    
-    // 기존 방식대로 videoRef에서 클라이언트 크기 가져오기
-    const videoElement = videoForOriginalDimsRef.current;
-    if (!videoElement || videoElement.clientWidth === 0 || videoElement.clientHeight === 0) {
-      console.warn("⚠️ drawDetections: 비디오 요소가 없거나 크기가 0입니다.", {
-        hasVideoElement: !!videoElement,
-        videoClientWidth: videoElement?.clientWidth,
-        videoClientHeight: videoElement?.clientHeight,
-        videoReadyState: videoElement?.readyState,
-      });
-      return;
-    }
-
-    const cssDrawingWidth = videoElement.clientWidth;
-    const cssDrawingHeight = videoElement.clientHeight;
+    const video = videoRef.current;
+    if (!video) return;
 
     const devicePixelRatio = window.devicePixelRatio || 1;
+    const cssDrawingWidth = video.clientWidth;
+    const cssDrawingHeight = video.clientHeight;
 
     // 캔버스 크기 설정
     canvas.width = canvas.offsetWidth * devicePixelRatio;
@@ -529,15 +720,109 @@ export const useFaceDetection = ({
     // 캔버스를 실제 크기로 확대 (scale() 사용)
     ctx.scale(devicePixelRatio, devicePixelRatio);
 
+    // 캔버스 클리어
     ctx.clearRect(0, 0, cssDrawingWidth, cssDrawingHeight);
 
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255,0,0,0.5)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(0, 0, cssDrawingWidth, cssDrawingHeight);
-    ctx.restore();
+    if (result.face && result.face.length > 0) {
+      // Face ID 스타일 커스텀 그리기
+      result.face.forEach((face) => {
+        if (face.box && face.box.length >= 4) {
+          // Human 라이브러리의 box 형식: [x, y, width, height]
+          const [boxX, boxY, boxWidth, boxHeight] = face.box;
+          
+          // 비디오 크기에 맞게 스케일 조정
+          const video = videoRef.current;
+          if (video && video.videoWidth && video.videoHeight) {
+            const scaleX = cssDrawingWidth / video.videoWidth;
+            const scaleY = cssDrawingHeight / video.videoHeight;
+            
+            const x = boxX * scaleX;
+            const y = boxY * scaleY;
+            const width = boxWidth * scaleX;
+            const height = boxHeight * scaleY;
+            
+            // Face ID 스타일 코너 그리기
+            ctx.save();
+            const cornerLineLength = 30;
+            const cornerRadius = 8;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+            ctx.lineWidth = 4 / devicePixelRatio;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            const rectX = x; 
+            const rectY = y; 
+            const rectWidth = width; 
+            const rectHeight = height;
+            
+            const cornersForRect = [
+              { x: rectX, y: rectY, type: 'topLeft' }, 
+              { x: rectX + rectWidth, y: rectY, type: 'topRight' },
+              { x: rectX, y: rectY + rectHeight, type: 'bottomLeft' }, 
+              { x: rectX + rectWidth, y: rectY + rectHeight, type: 'bottomRight' }
+            ];
+            
+            cornersForRect.forEach(corner => {
+              ctx.beginPath();
+              if (corner.type === 'topLeft') { 
+                ctx.moveTo(corner.x + cornerLineLength, corner.y); 
+                ctx.lineTo(corner.x + cornerRadius, corner.y); 
+                ctx.quadraticCurveTo(corner.x, corner.y, corner.x, corner.y + cornerRadius); 
+                ctx.lineTo(corner.x, corner.y + cornerLineLength); 
+              }
+              else if (corner.type === 'topRight') { 
+                ctx.moveTo(corner.x - cornerLineLength, corner.y); 
+                ctx.lineTo(corner.x - cornerRadius, corner.y); 
+                ctx.quadraticCurveTo(corner.x, corner.y, corner.x, corner.y + cornerRadius); 
+                ctx.lineTo(corner.x, corner.y + cornerLineLength); 
+              }
+              else if (corner.type === 'bottomLeft') { 
+                ctx.moveTo(corner.x, corner.y - cornerLineLength); 
+                ctx.lineTo(corner.x, corner.y - cornerRadius); 
+                ctx.quadraticCurveTo(corner.x, corner.y, corner.x + cornerRadius, corner.y); 
+                ctx.lineTo(corner.x + cornerLineLength, corner.y); 
+              }
+              else { 
+                ctx.moveTo(corner.x, corner.y - cornerLineLength); 
+                ctx.lineTo(corner.x, corner.y - cornerRadius); 
+                ctx.quadraticCurveTo(corner.x, corner.y, corner.x - cornerRadius, corner.y); 
+                ctx.lineTo(corner.x - cornerLineLength, corner.y); 
+              }
+              ctx.stroke();
+            });
+            ctx.restore();
+          }
+        }
+      });
 
-    if (fullDetections.length === 0) {
+      // 추가로 얼굴 랜드마크 그리기 (Human 라이브러리 사용)
+      if (humanRef.current && showPreview) {
+        // 얼굴 메시 포인트들을 가볍게 그리기
+        result.face.forEach((face) => {
+          if (face.mesh && face.mesh.length > 0) {
+            const video = videoRef.current;
+            if (video && video.videoWidth && video.videoHeight) {
+              const scaleX = cssDrawingWidth / video.videoWidth;
+              const scaleY = cssDrawingHeight / video.videoHeight;
+              
+              ctx.save();
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+              face.mesh.forEach((point, index) => {
+                // 주요 포인트들만 그리기 (눈, 코, 입 등)
+                if (index % 8 === 0) { // 8개 중 1개만 그리기
+                  const x = point[0] * scaleX;
+                  const y = point[1] * scaleY;
+                  ctx.beginPath();
+                  ctx.arc(x, y, 1 / devicePixelRatio, 0, 2 * Math.PI);
+                  ctx.fill();
+                }
+              });
+              ctx.restore();
+            }
+          }
+        });
+      }
+    } else {
+      // 얼굴이 감지되지 않을 때 가이드 표시
       const time = Date.now() / 1000;
       const pulseIntensity = 0.5 + 0.3 * Math.sin(time * 2);
       const guideWidth = Math.min(cssDrawingWidth * 0.6, 250);
@@ -547,30 +832,11 @@ export const useFaceDetection = ({
 
       ctx.save();
       ctx.strokeStyle = `rgba(255, 255, 255, ${pulseIntensity * 0.6})`;
-      ctx.lineWidth = 2 / dpr;
-      ctx.setLineDash([10 / dpr, 5 / dpr]);
+      ctx.lineWidth = 2 / devicePixelRatio;
+      ctx.setLineDash([10 / devicePixelRatio, 5 / devicePixelRatio]);
       ctx.strokeRect(guideX, guideY, guideWidth, guideHeight);
       ctx.restore();
 
-      ctx.save();
-      const cornerSize = 15;
-      ctx.strokeStyle = `rgba(255, 255, 255, ${pulseIntensity})`;
-      ctx.lineWidth = 3 / dpr;
-      ctx.setLineDash([]);
-      const corners = [
-        [guideX, guideY], [guideX + guideWidth, guideY],
-        [guideX, guideY + guideHeight], [guideX + guideWidth, guideY + guideHeight]
-      ];
-      corners.forEach(([xPos, yPos], i) => {
-        ctx.beginPath();
-        if (i === 0) { ctx.moveTo(xPos, yPos + cornerSize); ctx.lineTo(xPos, yPos); ctx.lineTo(xPos + cornerSize, yPos); }
-        else if (i === 1) { ctx.moveTo(xPos, yPos + cornerSize); ctx.lineTo(xPos, yPos); ctx.lineTo(xPos - cornerSize, yPos); }
-        else if (i === 2) { ctx.moveTo(xPos, yPos - cornerSize); ctx.lineTo(xPos, yPos); ctx.lineTo(xPos + cornerSize, yPos); }
-        else { ctx.moveTo(xPos, yPos - cornerSize); ctx.lineTo(xPos, yPos); ctx.lineTo(xPos - cornerSize, yPos); }
-        ctx.stroke();
-      });
-      ctx.restore();
-      
       ctx.save();
       ctx.fillStyle = `rgba(255, 255, 255, ${pulseIntensity * 0.8})`;
       ctx.font = `16px -apple-system, BlinkMacSystemFont, sans-serif`;
@@ -580,137 +846,45 @@ export const useFaceDetection = ({
       const textY = guideY - 20;
       ctx.fillText('얼굴을 화면에 맞춰주세요', textX, textY);
       ctx.restore();
-      return;
     }
-
-    const displaySize = { width: cssDrawingWidth, height: cssDrawingHeight };
-
-    if (!videoElement.videoWidth || !videoElement.videoHeight) {
-      console.warn("⚠️ drawDetections: 얼굴 박스 스케일링을 위한 원본 비디오 크기 정보 없음");
-      return;
-    }
-
-    fullDetections.forEach((fullDescription, index) => {
-      const detectionBox = fullDescription.detection.box;
-      if (!detectionBox) return;
-
-      const currentRect = new faceapi.Rect(detectionBox.x, detectionBox.y, detectionBox.width, detectionBox.height);
-      let smoothedBox = currentRect;
-      const previousSmoothedBox = smoothedBoxesRef.current.get(index);
-      if (previousSmoothedBox) {
-        smoothedBox = new faceapi.Rect(
-          lerp(previousSmoothedBox.x, currentRect.x, SMOOTHING_FACTOR),
-          lerp(previousSmoothedBox.y, currentRect.y, SMOOTHING_FACTOR),
-          lerp(previousSmoothedBox.width, currentRect.width, SMOOTHING_FACTOR),
-          lerp(previousSmoothedBox.height, currentRect.height, SMOOTHING_FACTOR)
-        );
-      }
-      smoothedBoxesRef.current.set(index, smoothedBox);
-
-      const scaleX = cssDrawingWidth / videoElement.videoWidth;
-      const scaleY = cssDrawingHeight / videoElement.videoHeight;
-      const x = smoothedBox.x * scaleX;
-      const y = smoothedBox.y * scaleY;
-      const width = smoothedBox.width * scaleX;
-      const height = smoothedBox.height * scaleY;
-      
-      ctx.save();
-      const cornerLineLength = 30;
-      const cornerRadius = 8;
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-      ctx.lineWidth = 4 / dpr;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      const rectX = x; const rectY = y; const rectWidth = width; const rectHeight = height;
-      const cornersForRect = [
-        { x: rectX, y: rectY, type: 'topLeft' }, { x: rectX + rectWidth, y: rectY, type: 'topRight' },
-        { x: rectX, y: rectY + rectHeight, type: 'bottomLeft' }, { x: rectX + rectWidth, y: rectY + rectHeight, type: 'bottomRight' }
-      ];
-      cornersForRect.forEach(corner => {
-        ctx.beginPath();
-        if (corner.type === 'topLeft') { ctx.moveTo(corner.x + cornerLineLength, corner.y); ctx.lineTo(corner.x + cornerRadius, corner.y); ctx.quadraticCurveTo(corner.x, corner.y, corner.x, corner.y + cornerRadius); ctx.lineTo(corner.x, corner.y + cornerLineLength); }
-        else if (corner.type === 'topRight') { ctx.moveTo(corner.x - cornerLineLength, corner.y); ctx.lineTo(corner.x - cornerRadius, corner.y); ctx.quadraticCurveTo(corner.x, corner.y, corner.x, corner.y + cornerRadius); ctx.lineTo(corner.x, corner.y + cornerLineLength); }
-        else if (corner.type === 'bottomLeft') { ctx.moveTo(corner.x, corner.y - cornerLineLength); ctx.lineTo(corner.x, corner.y - cornerRadius); ctx.quadraticCurveTo(corner.x, corner.y, corner.x + cornerRadius, corner.y); ctx.lineTo(corner.x + cornerLineLength, corner.y); }
-        else { ctx.moveTo(corner.x, corner.y - cornerLineLength); ctx.lineTo(corner.x, corner.y - cornerRadius); ctx.quadraticCurveTo(corner.x, corner.y, corner.x - cornerRadius, corner.y); ctx.lineTo(corner.x - cornerLineLength, corner.y); }
-        ctx.stroke();
-      });
-      ctx.restore();
-      
-      const resizedResult = faceapi.resizeResults(fullDescription, displaySize) as FullFaceDescriptionType;
-      if (resizedResult && resizedResult.landmarks) {
-        faceapi.draw.drawFaceLandmarks(canvas, resizedResult.landmarks);
-      }
-    });
-
-    if (smoothedBoxesRef.current.size > fullDetections.length) {
-      const newSmoothedBoxes = new Map<number, faceapi.Rect>();
-      fullDetections.forEach((_, index) => {
-        if (smoothedBoxesRef.current.has(index)) {
-          newSmoothedBoxes.set(index, smoothedBoxesRef.current.get(index)!);
-        }
-      });
-      smoothedBoxesRef.current = newSmoothedBoxes;
-    }
-  }, []);
+  }, [videoRef]);
 
   const startDetection = useCallback(() => {
-    console.log("🚀 startDetection 호출됨 - 상태 확인:", {
-      isModelLoaded,
-      isDetectingRef: isDetectingRef.current,
-      isCameraReady,
-      videoRef: !!videoRef.current,
-      canvasRef: !!canvasRef.current,
-      videoReadyState: videoRef.current?.readyState,
-      videoWidth: videoRef.current?.videoWidth,
-      videoHeight: videoRef.current?.videoHeight,
-      videoClientWidth: videoRef.current?.clientWidth,
-      videoClientHeight: videoRef.current?.clientHeight
-    });
+    console.log("🚀 Human 기반 얼굴 감지 시작");
 
-    if (!isModelLoaded) { 
-      console.log("❌ AI 모델이 로드되지 않음");
-      toast.error("AI 모델 로딩 필요"); 
-      return; 
-    }
-    if (isDetectingRef.current) { 
-      console.log("⚠️ 이미 감지 실행 중"); 
-      return; 
+    if (!isModelLoaded || !humanRef.current) {
+      console.log("❌ Human 라이브러리가 준비되지 않음");
+      toast.error("AI 모델 로딩 필요");
+      return;
     }
 
-    // isCameraReady 체크를 더 유연하게 변경
+    if (isDetectingRef.current) {
+      console.log("⚠️ 이미 감지 실행 중");
+      return;
+    }
+
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    
+
     if (!video || !canvas) {
       console.log("❌ 비디오 또는 캔버스 요소가 없음");
-      toast.error("카메라 요소 초기화 실패");
       return;
     }
 
-    // 비디오가 준비되지 않은 경우 대기
-    if (video.readyState < 2) {
-      console.log("⏳ 비디오 로딩 대기 중...", { readyState: video.readyState });
+    if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
+      console.log("⏳ 비디오 준비 대기 중...");
       setTimeout(() => startDetection(), 500);
       return;
     }
 
-    // 비디오 메타데이터 확인
-    if (!video.videoWidth || !video.videoHeight) {
-      console.log("⏳ 비디오 메타데이터 대기 중...", { 
-        videoWidth: video.videoWidth, 
-        videoHeight: video.videoHeight 
-      });
-      setTimeout(() => startDetection(), 500);
-      return;
-    }
+    console.log("✅ 모든 조건 충족, Human 기반 감지 시작");
 
-    console.log("✅ 모든 조건 충족, 감지 시작");
-    
     setIsDetecting(true);
     isDetectingRef.current = true;
     setLastDetectionTime(Date.now());
     frameCountRef.current = 0;
 
+    // 그리기 루프
     let lastAnimateTime = 0;
     const animate = (currentTime: number) => {
       if (!isDetectingRef.current) return;
@@ -718,85 +892,185 @@ export const useFaceDetection = ({
       if (currentTime - lastAnimateTime < 16) return; // 약 60fps
       lastAnimateTime = currentTime;
       if (canvasRef.current && showPreview) {
-        drawDetections(canvasRef.current, lastFullDetectionsRef.current, videoRef);
+        drawDetections(canvasRef.current, lastDetectionsRef.current);
       }
     };
     animationFrameRef.current = requestAnimationFrame(animate);
 
+    // 감지 루프
     detectionIntervalRef.current = setInterval(async () => {
       const video = videoRef.current;
-      if (video && isDetectingRef.current && video.readyState >= video.HAVE_ENOUGH_DATA) {
+      if (video && isDetectingRef.current && video.readyState >= video.HAVE_ENOUGH_DATA && humanRef.current) {
         frameCountRef.current++;
         try {
-          const detection = await faceapi
-            .detectSingleFace(video, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.15 }))
-            .withFaceLandmarks().withFaceExpressions();
-          
-          // 단일 감지 결과를 배열로 변환하여 기존 로직과 호환
-          const detections: FullFaceDescriptionType[] = detection ? [detection] : [];
-          lastFullDetectionsRef.current = detections;
-          
-          if (detection) {
+          const result = await humanRef.current.detect(video);
+          lastDetectionsRef.current = result;
+
+          if (result.face && result.face.length > 0) {
             setLastDetectionTime(Date.now());
-            const desc = detection;
-            const { yaw, pitch, roll } = estimateHeadPose(desc.landmarks);
-            const ear = (computeAdvancedEAR(desc.landmarks.getLeftEye()) + computeAdvancedEAR(desc.landmarks.getRightEye())) / 2;
-            const mar = computeMAR(desc.landmarks.getMouth());
-            const gaze = advancedGazeEstimation(desc.landmarks);
-            const emotion = desc.expressions.asSortedArray()[0]?.expression || 'neutral';
+            const face = result.face[0];
             
-            // 실제 깜빡임 카운트
-            const blinkRate = detectBlink(ear);
-            const { isDrowsyFromBlinks, blinkStatus } = assessDrowsinessFromBlinks(blinkRate);
+            // 초기 프레임 안정화
+            stableFrameCountRef.current++;
+            const isStableFrame = stableFrameCountRef.current >= STABLE_FRAME_THRESHOLD;
+
+            // 눈과 입 랜드마크에서 EAR, MAR 계산
+            let ear = 0.3;
+            let mar = 0.0;
+
+            if (face.mesh && face.mesh.length >= 468) {
+              // 눈 랜드마크 추출 (Human의 face mesh 사용)
+              // MediaPipe Face Mesh 인덱스에 맞는 정확한 눈 랜드마크
+              const leftEyePoints = [
+                face.mesh[33],   // 왼쪽 눈 외측
+                face.mesh[160],  // 왼쪽 눈 위쪽
+                face.mesh[158],  // 왼쪽 눈 위쪽
+                face.mesh[133],  // 왼쪽 눈 내측
+                face.mesh[153],  // 왼쪽 눈 아래쪽
+                face.mesh[144],  // 왼쪽 눈 아래쪽
+              ];
+              const rightEyePoints = [
+                face.mesh[362],  // 오른쪽 눈 외측
+                face.mesh[385],  // 오른쪽 눈 위쪽
+                face.mesh[387],  // 오른쪽 눈 위쪽
+                face.mesh[263],  // 오른쪽 눈 내측
+                face.mesh[373],  // 오른쪽 눈 아래쪽
+                face.mesh[380],  // 오른쪽 눈 아래쪽
+              ];
+
+              const leftEAR = computeEAR(leftEyePoints);
+              const rightEAR = computeEAR(rightEyePoints);
+              ear = (leftEAR + rightEAR) / 2;
+
+              // 입 랜드마크 추출 (정확한 입 영역 포인트)
+              const mouthPoints = [
+                face.mesh[61],   // 왼쪽 입꼬리
+                face.mesh[84],   // 위쪽 입술 중앙 왼쪽
+                face.mesh[17],   // 위쪽 입술 중앙
+                face.mesh[314],  // 위쪽 입술 중앙 오른쪽
+                face.mesh[291],  // 오른쪽 입꼬리
+                face.mesh[375],  // 아래쪽 입술 중앙 오른쪽
+                face.mesh[321],  // 아래쪽 입술 중앙
+                face.mesh[308],  // 아래쪽 입술 중앙 왼쪽
+              ];
+              mar = computeMAR(mouthPoints);
+            }
+
+            const headPose = estimateHeadPose(face);
+            const gaze = estimateGazeDirection(face);
+            const emotion = face.emotion && face.emotion.length > 0 ? face.emotion[0].emotion : 'neutral';
+
+            // 깜빡임 카운트 (안정화 기간에는 정상 범위로 설정)
+            const rawBlinkRate = detectBlink(ear);
+            const blinkRate = isStableFrame ? rawBlinkRate : Math.max(18, rawBlinkRate); // 안정화 전에는 최소 18회/분으로 설정 (정상 범위)
+
+            // 하품 감지
+            const isYawning = mar > 0.6; // 하품 임계값
             
-            // 디버깅: 주요 값들 로그 (20프레임마다)
-            if (frameCountRef.current % 20 === 0) {
-              console.log("🔍 얼굴 분석 결과:", {
-                frame: frameCountRef.current,
+            // 고급 졸음 감지 (안정화된 프레임에서만 정확한 판정)
+            const isDrowsy = isStableFrame ? detectAdvancedDrowsiness(ear, mar, headPose, blinkRate) : false;
+
+            // ref를 사용하여 성능 개선
+            if (isDrowsy) {
+              consecutiveDrowsyFramesRef.current += 1;
+              setConsecutiveDrowsyFrames(consecutiveDrowsyFramesRef.current);
+            } else {
+              consecutiveDrowsyFramesRef.current = 0;
+              setConsecutiveDrowsyFrames(0);
+            }
+
+            // EAR 히스토리 업데이트
+            const newEarHistory = [...earHistoryRef.current, ear].slice(-30);
+            earHistoryRef.current = newEarHistory;
+            setEarHistory(newEarHistory);
+
+            // 시선 안정성 계산
+            const gazeStability = calculateGazeStability(gaze);
+            
+            // 주의집중도 계산 (안정화 기간에는 보정된 값 사용)
+            const attentionScore = isStableFrame 
+              ? calculateAttentionScore(ear, mar, headPose, gaze, blinkRate, gazeStability)
+              : Math.max(70, calculateAttentionScore(ear, mar, headPose, gaze, blinkRate, gazeStability)); // 안정화 전에는 최소 70점
+            const fatigueLevel = isStableFrame 
+              ? assessFatigueLevel(attentionScore, ear, consecutiveDrowsyFramesRef.current)
+              : 'low'; // 초기 프레임에서는 항상 낮은 피로도로 설정
+            
+            // 주의집중도 히스토리 업데이트
+            const newAttentionHistory = [...attentionHistoryRef.current, attentionScore].slice(-60);
+            attentionHistoryRef.current = newAttentionHistory;
+            setAttentionHistory(newAttentionHistory);
+
+            // 결과 로깅 (프레임 5개마다)
+            if (frameCountRef.current % 5 === 0) {
+              console.log("📊 얼굴 분석 결과:", {
+                frameCount: stableFrameCountRef.current,
+                isStable: isStableFrame,
                 ear: ear.toFixed(3),
                 mar: mar.toFixed(3),
-                blinkRate,
-                blinkStatus,
-                isDrowsyFromBlinks,
+                blinkRate: isStableFrame ? `${blinkRate}회/분 (10초 측정)` : `${blinkRate}회/분 (보정: 원래 ${rawBlinkRate})`,
+                attentionScore: attentionScore.toFixed(1),
+                gazeDirection: gaze,
+                headPose: {
+                  yaw: headPose.yaw.toFixed(1),
+                  pitch: headPose.pitch.toFixed(1),
+                  roll: headPose.roll.toFixed(1)
+                },
                 emotion,
-                leftEyeEAR: computeAdvancedEAR(desc.landmarks.getLeftEye()).toFixed(3),
-                rightEyeEAR: computeAdvancedEAR(desc.landmarks.getRightEye()).toFixed(3)
+                isDrowsy,
+                fatigueLevel,
+                confidence: Math.round((face.boxScore || 0.5) * 100)
               });
             }
-            
-            // 기존 졸음 감지 로직과 깜빡임 기반 졸음 감지 결합
-            const isDrowsyFromEyes = ear < 0.20;
-            const isDrowsyFromMouth = mar > 0.4;
-            const isDrowsyFromHead = Math.abs(pitch) > 25;
-            
-            const isDrowsy = isDrowsyFromEyes || isDrowsyFromMouth || isDrowsyFromHead || isDrowsyFromBlinks;
-            
-            if (isDrowsy) setConsecutiveDrowsyFrames(prev => prev + 1); else setConsecutiveDrowsyFrames(0);
-            const newEarHistory = [...earHistory, ear].slice(-30);
-            setEarHistory(newEarHistory);
-            
-            const attentionScore = calculateAttentionScore(ear, mar, { yaw, pitch, roll }, gaze, blinkRate);
-            const fatigueLevel = assessFatigueLevel(attentionScore, ear, consecutiveDrowsyFrames);
-            const newAttentionHistory = [...attentionHistory, attentionScore].slice(-60);
-            setAttentionHistory(newAttentionHistory);
-            onFaceDetected({
-              isDrowsy, isAttentive: attentionScore > 70, emotion, ear, mar, 
-              gazeDirection: gaze, headPose: { yaw, pitch, roll }, 
-              blinkRate, attentionScore, fatigueLevel, confidence: Math.round(desc.detection.score * 100)
-            });
+
+            const analysisResult = {
+              isDrowsy,
+              isAttentive: attentionScore > 70,
+              emotion,
+              ear,
+              mar,
+              isYawning,
+              gazeDirection: gaze,
+              headPose,
+              blinkRate,
+              attentionScore,
+              fatigueLevel,
+              confidence: Math.round((face.boxScore || 0.5) * 100)
+            };
+
+            // 안정화된 경우에만 결과 전달
+            if (isStableFrame) {
+              // console.log("🔄 onFaceDetected 호출 중... (안정화 완료)", analysisResult);
+              onFaceDetected(analysisResult);
+            } else {
+              console.log("⏳ 안정화 중... 분석 결과 대기", {
+                frameCount: stableFrameCountRef.current,
+                threshold: STABLE_FRAME_THRESHOLD,
+                remaining: STABLE_FRAME_THRESHOLD - stableFrameCountRef.current
+              });
+            }
           } else {
-            lastFullDetectionsRef.current = [];
-            if (Date.now() - lastDetectionTime > 5000) {
-              onFaceNotDetected(); setLastDetectionTime(Date.now());
+            lastDetectionsRef.current = null;
+            // 얼굴 감지 실패 시간을 2초로 단축하여 더 빠른 반응
+            if (Date.now() - lastDetectionTime > 2000) {
+              onFaceNotDetected();
+              setLastDetectionTime(Date.now());
             }
           }
-        } catch (err) { console.error("얼굴 분석 오류:", err); }
+        } catch (err) {
+          console.error("Human 얼굴 분석 오류:", err);
+        }
       }
-    }, 150);
-  }, [isModelLoaded, isCameraReady, showPreview, onFaceDetected, onFaceNotDetected, videoRef, canvasRef, earHistory, attentionHistory, drawDetections, memoizedStopDetection, detectBlink, assessDrowsinessFromBlinks]);
-  
-  const lerp = (start: number, end: number, t: number) => start * (1 - t) + end * t;
-  const SMOOTHING_FACTOR = 0.2;
+    }, 100); // 감지 주기를 150ms에서 100ms로 단축하여 더 빠른 반응
+  }, [
+    isModelLoaded, 
+    showPreview, 
+    onFaceDetected, 
+    onFaceNotDetected, 
+    drawDetections, 
+    detectBlink,
+    calculateGazeStability,
+    detectAdvancedDrowsiness
+  ]);
 
   return {
     isModelLoaded,
@@ -804,7 +1078,8 @@ export const useFaceDetection = ({
     isCameraReady,
     startDetection,
     stopDetection: memoizedStopDetection,
-    modelLoadingError
+    modelLoadingError,
+    isStable: stableFrameCountRef.current >= STABLE_FRAME_THRESHOLD
   };
 };
 

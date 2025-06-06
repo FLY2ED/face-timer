@@ -99,7 +99,7 @@ export const GroupMessages = ({ groupId, members }: GroupMessagesProps) => {
                         <p className="text-xs text-zinc-400 mb-1">{getUserName(message.userId)}</p>
                       )}
                       <div className={`rounded-2xl px-4 py-2 ${
-                        isCurrentUser ? 'bg-blue-600 text-white' : 'bg-zinc-700 text-white'
+                        isCurrentUser ? 'bg-orange-600 text-white' : 'bg-zinc-700 text-white'
                       }`}>
                         <p>{message.content}</p>
                       </div>
@@ -127,7 +127,7 @@ export const GroupMessages = ({ groupId, members }: GroupMessagesProps) => {
           <Button
             onClick={handleSendMessage}
             disabled={!messageText.trim()}
-            className="bg-blue-600 hover:bg-blue-700"
+            className="bg-orange-600 hover:bg-orange-700"
           >
             <Send size={18} />
           </Button>

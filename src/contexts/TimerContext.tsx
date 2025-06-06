@@ -11,6 +11,7 @@ interface TimerContextType {
   resumeTimer: () => void;
   stopTimer: () => void;
   resetTimer: () => void;
+  resetDailyRecords: () => void;
 }
 
 const defaultContext: TimerContextType = {
@@ -23,6 +24,7 @@ const defaultContext: TimerContextType = {
   resumeTimer: () => {},
   stopTimer: () => {},
   resetTimer: () => {},
+  resetDailyRecords: () => {},
 };
 
 const TimerContext = createContext<TimerContextType>(defaultContext);
@@ -32,6 +34,7 @@ export const useTimer = () => useContext(TimerContext);
 // 로컬 스토리지 키
 const TIMER_STATE_KEY = "timer_state";
 const TASK_TIMES_KEY = "task_times";
+const LAST_RESET_DATE_KEY = "last_reset_date";
 
 export const TimerProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -45,8 +48,75 @@ export const TimerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // 작업별 누적 시간을 저장하는 객체
   const [taskTimes, setTaskTimes] = useState<Record<string, number>>({});
 
+  // 하루 기록 초기화 체크 함수
+  const checkAndResetDaily = () => {
+    try {
+      const today = new Date().toDateString();
+      const lastResetDate = localStorage.getItem(LAST_RESET_DATE_KEY);
+      
+      console.log("📅 날짜 체크:", { today, lastResetDate });
+      
+      if (lastResetDate !== today) {
+        console.log("🔄 하루가 지나서 기록을 초기화합니다.");
+        
+        // 기록 초기화
+        setTaskTimes({});
+        localStorage.removeItem(TASK_TIMES_KEY);
+        localStorage.removeItem(TIMER_STATE_KEY);
+        
+        // 현재 실행 중인 타이머도 초기화
+        setActiveTask(null);
+        setIsActive(false);
+        setIsPaused(false);
+        setElapsedTime(0);
+        setLastElapsedTime(0);
+        setStartTime(null);
+        setPausedTime(0);
+        
+        // 마지막 초기화 날짜 업데이트
+        localStorage.setItem(LAST_RESET_DATE_KEY, today);
+        
+        console.log("✅ 하루 기록 초기화 완료");
+      }
+    } catch (error) {
+      console.error("하루 기록 초기화 체크 중 오류:", error);
+    }
+  };
+
+  // 수동 하루 기록 초기화 함수
+  const resetDailyRecords = () => {
+    try {
+      console.log("🔄 수동으로 하루 기록을 초기화합니다.");
+      
+      // 기록 초기화
+      setTaskTimes({});
+      localStorage.removeItem(TASK_TIMES_KEY);
+      localStorage.removeItem(TIMER_STATE_KEY);
+      
+      // 현재 실행 중인 타이머도 초기화
+      setActiveTask(null);
+      setIsActive(false);
+      setIsPaused(false);
+      setElapsedTime(0);
+      setLastElapsedTime(0);
+      setStartTime(null);
+      setPausedTime(0);
+      
+      // 마지막 초기화 날짜를 오늘로 설정
+      const today = new Date().toDateString();
+      localStorage.setItem(LAST_RESET_DATE_KEY, today);
+      
+      console.log("✅ 하루 기록 수동 초기화 완료");
+    } catch (error) {
+      console.error("하루 기록 수동 초기화 중 오류:", error);
+    }
+  };
+
   // 로컬 스토리지에서 타이머 상태 불러오기
   useEffect(() => {
+    // 먼저 하루 초기화 체크
+    checkAndResetDaily();
+    
     try {
       const savedTaskTimes = localStorage.getItem(TASK_TIMES_KEY);
       if (savedTaskTimes) {
@@ -75,6 +145,27 @@ export const TimerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     } catch (error) {
       console.error("타이머 상태 로드 중 오류:", error);
     }
+  }, []);
+
+  // 앱이 활성화될 때마다 날짜 체크 (포커스 이벤트)
+  useEffect(() => {
+    const handleFocus = () => {
+      checkAndResetDaily();
+    };
+
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        checkAndResetDaily();
+      }
+    };
+
+    window.addEventListener('focus', handleFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
 
   // 타이머 상태 저장
@@ -243,6 +334,7 @@ export const TimerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         resumeTimer,
         stopTimer,
         resetTimer,
+        resetDailyRecords,
       }}
     >
       {children}

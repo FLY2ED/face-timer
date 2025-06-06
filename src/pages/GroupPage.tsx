@@ -32,7 +32,7 @@ const GroupPage = () => {
         
         if (foundGroup) {
           setGroup(foundGroup);
-          setMembers(foundGroup.members || []);
+        setMembers(foundGroup.members || []);
         } else {
           setGroup(null);
           setMembers([]);

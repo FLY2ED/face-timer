@@ -100,12 +100,12 @@ export const CameraTimer: React.FC = () => {
 
   return (
     <div className="mt-6 p-4 bg-gradient-to-br from-zinc-800/50 via-zinc-800/40 to-zinc-900/50 rounded-lg border border-zinc-700/30 backdrop-blur-sm relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 via-purple-500/5 to-pink-500/5 pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 via-purple-500/5 to-pink-500/5 pointer-events-none" />
       
       <div className="flex justify-between items-center relative">
         <div className="flex items-center gap-2">
-          <div className="p-2 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-md backdrop-blur-sm border border-blue-500/10">
-            <Camera className="w-4 h-4 text-blue-300" />
+          <div className="p-2 bg-gradient-to-br from-orange-500/20 to-purple-500/20 rounded-md backdrop-blur-sm border border-orange-500/10">
+            <Camera className="w-4 h-4 text-orange-300" />
           </div>
           <div>
             <h3 className="text-sm font-medium text-zinc-200">카메라 타이머</h3>
@@ -115,7 +115,7 @@ export const CameraTimer: React.FC = () => {
         <div className="relative">
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center bg-zinc-800/50 rounded-md">
-              <Loader2 className="w-4 h-4 text-blue-400 animate-spin" />
+              <Loader2 className="w-4 h-4 text-orange-400 animate-spin" />
             </div>
           )}
           <Switch
@@ -123,11 +123,11 @@ export const CameraTimer: React.FC = () => {
             onCheckedChange={handleCameraToggle}
             disabled={isLoading}
             className={cn(
-              "data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-blue-500 data-[state=checked]:to-purple-500",
+              "data-[state=checked]:bg-gradient-to-r data-[state=checked]:from-orange-500 data-[state=checked]:to-purple-500",
               "bg-zinc-700/50 border border-zinc-600/50",
               "data-[state=unchecked]:bg-zinc-800/50",
               "transition-all duration-200",
-              "hover:bg-zinc-700/70 data-[state=checked]:hover:from-blue-600 data-[state=checked]:hover:to-purple-600",
+              "hover:bg-zinc-700/70 data-[state=checked]:hover:from-orange-600 data-[state=checked]:hover:to-purple-600",
               isLoading && "opacity-50"
             )}
           />
@@ -138,7 +138,7 @@ export const CameraTimer: React.FC = () => {
         <>
           {/* 디버그 정보 표시 */}
           {debugInfo && (
-            <div className="mt-2 p-1 bg-blue-500/10 rounded-md flex items-center text-xs text-blue-300">
+            <div className="mt-2 p-1 bg-orange-500/10 rounded-md flex items-center text-xs text-orange-300">
               <Info className="w-3 h-3 mr-1" />
               {debugInfo}
             </div>
@@ -188,7 +188,7 @@ export const CameraTimer: React.FC = () => {
 
           {/* 시작하기 버튼 */}
           <Button
-            className="w-full h-10 mt -4 text-base font-semibold bg-gradient-to-r from-blue-500 to-purple-500 text-white shadow-lg hover:from-blue-600 hover:to-purple-600"
+            className="w-full h-10 mt -4 text-base font-semibold bg-gradient-to-r from-orange-500 to-purple-500 text-white shadow-lg hover:from-orange-600 hover:to-purple-600"
             onClick={() => setModalOpen(true)}
           >
             시작하기
@@ -197,7 +197,7 @@ export const CameraTimer: React.FC = () => {
           <div className="mt-4 text-xs text-zinc-400 space-y-1">
             <p>얼굴이 감지되면 자동으로 타이머가 시작되고, 얼굴이 5초 이상 감지되지 않으면 자동으로 일시정지됩니다.</p>
             {!isModelLoaded && !modelLoadingError && (
-              <p className="text-blue-400/80">
+              <p className="text-orange-400/80">
                 AI 얼굴 인식 모델을 로드 중입니다. 잠시만 기다려주세요...
               </p>
             )}

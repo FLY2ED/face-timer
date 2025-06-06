@@ -5,6 +5,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { ChevronsLeft, ChevronsRight, Menu } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { GroupList } from "../groups/GroupList";
 
 export const Sidebar: React.FC = () => {
   const { 
@@ -54,8 +55,10 @@ export const Sidebar: React.FC = () => {
         (state === "collapsed" && !isMobileContext) ? "px-[8px]" : "px-[15px]" 
       )}>
         <NavigationMenu />
+        <GroupList />
       </div>
 
+      
       <UserProfile />
     </>
   );

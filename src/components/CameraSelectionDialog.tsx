@@ -70,8 +70,8 @@ export const CameraSelectionDialog: React.FC<CameraSelectionDialogProps> = ({
       <DialogContent className="sm:max-w-[500px] bg-zinc-900 border-zinc-800">
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-blue-500/20 rounded-full flex items-center justify-center">
-              <Camera className="w-6 h-6 text-blue-400" />
+            <div className="w-12 h-12 bg-orange-500/20 rounded-full flex items-center justify-center">
+              <Camera className="w-6 h-6 text-orange-400" />
             </div>
             <div>
               <DialogTitle className="text-white text-lg">
@@ -104,9 +104,9 @@ export const CameraSelectionDialog: React.FC<CameraSelectionDialogProps> = ({
                     disabled={isLoading || isSwitching}
                     className={cn(
                       "w-full p-4 rounded-lg border transition-all duration-200 text-left",
-                      "hover:bg-zinc-800/50 focus:outline-none focus:ring-2 focus:ring-blue-500/50",
+                      "hover:bg-zinc-800/50 focus:outline-none focus:ring-2 focus:ring-orange-500/50",
                       isSelected 
-                        ? "bg-blue-500/20 border-blue-500/50 text-blue-200" 
+                        ? "bg-orange-500/20 border-orange-500/50 text-orange-200" 
                         : "bg-zinc-800/30 border-zinc-700 text-zinc-300",
                       (isLoading || isSwitching) && "opacity-50 cursor-not-allowed"
                     )}
@@ -114,11 +114,11 @@ export const CameraSelectionDialog: React.FC<CameraSelectionDialogProps> = ({
                     <div className="flex items-center gap-3">
                       <div className={cn(
                         "w-10 h-10 rounded-lg flex items-center justify-center",
-                        isSelected ? "bg-blue-500/30" : "bg-zinc-700/50"
+                        isSelected ? "bg-orange-500/30" : "bg-zinc-700/50"
                       )}>
                         <Icon className={cn(
                           "w-5 h-5",
-                          isSelected ? "text-blue-300" : "text-zinc-400"
+                          isSelected ? "text-orange-300" : "text-zinc-400"
                         )} />
                       </div>
                       
@@ -126,21 +126,21 @@ export const CameraSelectionDialog: React.FC<CameraSelectionDialogProps> = ({
                         <div className="flex items-center justify-between">
                           <h3 className={cn(
                             "font-medium",
-                            isSelected ? "text-blue-200" : "text-white"
+                            isSelected ? "text-orange-200" : "text-white"
                           )}>
                             {camera.label || `카메라 ${index + 1}`}
                           </h3>
                           
                           {isSelected && (
-                            <div className="flex items-center gap-1 text-blue-400">
+                            <div className="flex items-center gap-1 text-orange-400">
                               <Check className="w-4 h-4" />
                               <span className="text-xs">선택됨</span>
                             </div>
                           )}
                           
                           {isSwitching && (
-                            <div className="flex items-center gap-2 text-blue-400">
-                              <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin"></div>
+                            <div className="flex items-center gap-2 text-orange-400">
+                              <div className="w-4 h-4 border-2 border-orange-400 border-t-transparent rounded-full animate-spin"></div>
                               <span className="text-xs">전환 중...</span>
                             </div>
                           )}
@@ -148,7 +148,7 @@ export const CameraSelectionDialog: React.FC<CameraSelectionDialogProps> = ({
                         
                         <p className={cn(
                           "text-xs mt-1",
-                          isSelected ? "text-blue-300/80" : "text-zinc-500"
+                          isSelected ? "text-orange-300/80" : "text-zinc-500"
                         )}>
                           ID: {camera.deviceId.substr(0, 20)}...
                         </p>

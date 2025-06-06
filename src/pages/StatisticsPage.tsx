@@ -135,7 +135,7 @@ const StatisticsPage: React.FC = () => {
                 <TabsTrigger 
                   key={tab} 
                   value={tab}
-                  className="data-[state=active]:bg-blue-500 data-[state=active]:text-black"
+                  className="data-[state=active]:bg-orange-500 data-[state=active]:text-black"
                   disabled
                 >
                   {tab}
@@ -150,7 +150,7 @@ const StatisticsPage: React.FC = () => {
               </Button>
               
               <div className="flex items-center gap-2">
-                <CalendarIcon className="h-5 w-5 text-blue-500" />
+                <CalendarIcon className="h-5 w-5 text-orange-500" />
                 <span className="text-lg">{timeFrames[selectedTab as keyof typeof timeFrames] || selectedDate}</span>
               </div>
               
@@ -181,7 +181,7 @@ const StatisticsPage: React.FC = () => {
         {/* 준비중 오버레이 */}
         <div className="absolute inset-0 bg-zinc-900/50 backdrop-blur-[2px] flex flex-col items-center justify-center z-20">
           <div className="text-center">
-            <Construction className="h-16 w-16 text-blue-400 mb-6 inline-block" />
+            <Construction className="h-16 w-16 text-orange-400 mb-6 inline-block" />
             <h2 className="text-3xl font-bold text-white mb-3">페이지 준비중</h2>
             <p className="text-zinc-300 text-center max-w-md">
               현재 통계 페이지는 개발 중입니다. 곧 멋진 모습으로 찾아뵙겠습니다!

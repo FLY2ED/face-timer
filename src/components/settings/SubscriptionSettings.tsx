@@ -101,7 +101,7 @@ const SubscriptionSettings: React.FC<SubscriptionSettingsProps> = ({ onClose }) 
         <Card className="bg-zinc-800 border-zinc-700">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-blue-500" />
+              <AlertCircle className="h-5 w-5 text-orange-500" />
               현재 활성화된 구독이 없습니다
             </CardTitle>
             <CardDescription>
@@ -110,7 +110,7 @@ const SubscriptionSettings: React.FC<SubscriptionSettingsProps> = ({ onClose }) 
           </CardHeader>
           <CardContent>
             <Button 
-              className="w-full bg-blue-500 hover:bg-blue-600 text-black"
+              className="w-full bg-orange-500 hover:bg-orange-600 text-black"
               onClick={() => window.location.href = "/pricing"}
             >
               구독 시작하기

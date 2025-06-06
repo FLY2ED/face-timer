@@ -92,7 +92,7 @@ export const GroupInfoForm = ({
           <Button 
             onClick={handleSaveGroup}
             disabled={loading || (currentName === initialName && currentDescription === initialDescription)}
-            className="bg-blue-500 hover:bg-blue-600"
+            className="bg-orange-500 hover:bg-orange-600"
           >
             {loading ? "저장 중..." : "저장"}
           </Button>

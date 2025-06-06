@@ -3,12 +3,12 @@ import { Timer } from "../timer/Timer";
 import { TaskSelector } from "../tasks/TaskSelector";
 import { useTimer } from "@/contexts/TimerContext";
 import { Button } from "../ui/button";
-import { Plus } from "lucide-react";
+import { Plus, RotateCcw } from "lucide-react";
 import { AddTaskDialog } from "../tasks/AddTaskDialog";
 import { cn } from "@/lib/utils";
 
 export const MainContent: React.FC = () => {
-  const { isActive } = useTimer();
+  const { isActive, resetDailyRecords } = useTimer();
   const isAuthenticated = true;
   const [showAddTask, setShowAddTask] = useState(false);
   const [isCameraMode, setIsCameraMode] = useState(false);
@@ -25,6 +25,7 @@ export const MainContent: React.FC = () => {
   };
 
   const handleCameraModeChange = (isOn: boolean) => {
+    console.log("📷 MainContent: 카메라 모드 변경", { isOn });
     setIsCameraMode(isOn);
   };
 
@@ -32,12 +33,12 @@ export const MainContent: React.FC = () => {
     <main className={cn(
       "flex w-full flex-col text-white mx-auto relative transition-all duration-500",
       isCameraMode 
-        ? "max-w-4xl ring-2 ring-blue-500/50 ring-offset-2 ring-offset-zinc-900 rounded-lg" 
+        ? "max-w-4xl ring-2 ring-orange-500/50 ring-offset-zinc-900 rounded-3xl" 
         : "max-w-sm"
     )}>
       <div className={cn(
-        "p-4 rounded-lg transition-all duration-500",
-        isCameraMode && "bg-gradient-to-br from-blue-500/10 via-transparent to-purple-500/10"
+        "px-10 pb-6 pt-3 rounded-lg transition-all duration-500",
+        isCameraMode && "bg-gradient-to-br from-orange-500/10 via-transparent to-orange-500/10"
       )}>
         <Timer onCameraModeChange={handleCameraModeChange} />
         <TaskSelector onRequireAuth={handleRequireAuth} />
@@ -46,8 +47,25 @@ export const MainContent: React.FC = () => {
       {isAuthenticated && (
         <>
           <Button
+            variant="default"
+            onClick={() => {
+              if (
+                window.confirm(
+                  "정말로 오늘의 모든 기록을 초기화하시겠습니까? 이 작업은 되돌릴 수 없습니다."
+                )
+              ) {
+                resetDailyRecords();
+              }
+            }}
+            className="fixed top-8 right-8 z-10 px-4 py-2 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800/50"
+            title="하루 기록 초기화"
+          >
+            오늘 기록 초기화
+          </Button>
+
+          <Button
             onClick={handleAddTask}
-            className="fixed bottom-8 right-8 flex items-center gap-2 px-4 h-12 rounded-full bg-zinc-700 hover:bg-zinc-600 shadow-lg border border-zinc-600 transition-colors duration-200"
+            className="fixed bottom-8 right-8 flex items-center gap-2 px-4 h-12 rounded-2xl bg-zinc-700 hover:bg-zinc-600 shadow-lg transition-colors duration-200"
           >
             <Plus className="h-5 w-5 text-zinc-200" />
             <span className="text-zinc-200">새 작업</span>

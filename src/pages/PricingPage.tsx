@@ -109,10 +109,10 @@ const PricingPage: React.FC = () => {
               className="w-[400px]"
             >
               <TabsList className="grid w-full grid-cols-2 bg-zinc-800">
-                <TabsTrigger value="monthly" className="data-[state=active]:bg-blue-500 data-[state=active]:text-black" disabled>
+                <TabsTrigger value="monthly" className="data-[state=active]:bg-orange-500 data-[state=active]:text-black" disabled>
                   월간 결제
                 </TabsTrigger>
-                <TabsTrigger value="yearly" className="data-[state=active]:bg-blue-500 data-[state=active]:text-black" disabled>
+                <TabsTrigger value="yearly" className="data-[state=active]:bg-orange-500 data-[state=active]:text-black" disabled>
                   연간 결제 (17% 할인)
                 </TabsTrigger>
               </TabsList>
@@ -126,13 +126,13 @@ const PricingPage: React.FC = () => {
                 key={plan.id} 
                 className={`relative border ${
                   plan.recommended 
-                    ? "border-blue-500 bg-zinc-800 shadow-lg shadow-blue-500/10" 
+                    ? "border-orange-500 bg-zinc-800 shadow-lg shadow-orange-500/10" 
                     : "border-zinc-700 bg-zinc-800"
                 }`}
               >
                 {plan.recommended && (
                   <div className="absolute -top-3 left-0 right-0 flex justify-center">
-                    <span className="bg-blue-500 text-black text-xs px-3 py-1 rounded-full font-medium">
+                    <span className="bg-orange-500 text-black text-xs px-3 py-1 rounded-full font-medium">
                       추천 요금제
                     </span>
                   </div>
@@ -170,7 +170,7 @@ const PricingPage: React.FC = () => {
                   <Button 
                     className={`w-full ${
                       plan.recommended
-                        ? "bg-blue-500 hover:bg-blue-600 text-black"
+                        ? "bg-orange-500 hover:bg-orange-600 text-black"
                         : plan.id === "free" ? "bg-zinc-700" : ""
                     }`}
                     onClick={() => handleSubscribe(plan)}
@@ -242,25 +242,25 @@ const PricingPage: React.FC = () => {
             <h2 className="text-2xl font-bold mb-10 text-center">모든 플랫폼 지원</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-8">
               <div className="flex flex-col items-center text-center">
-                <Smartphone className="h-12 w-12 text-blue-500 mb-4" />
+                <Smartphone className="h-12 w-12 text-orange-500 mb-4" />
                 <h3 className="font-medium text-lg">모바일</h3>
                 <p className="text-zinc-400 mt-2">iOS와 Android에서 언제 어디서나 이용 가능합니다.</p>
               </div>
               
               <div className="flex flex-col items-center text-center">
-                <Laptop className="h-12 w-12 text-blue-500 mb-4" />
+                <Laptop className="h-12 w-12 text-orange-500 mb-4" />
                 <h3 className="font-medium text-lg">데스크톱</h3>
                 <p className="text-zinc-400 mt-2">Windows와 macOS용 애플리케이션으로 편리하게 이용하세요.</p>
               </div>
               
               <div className="flex flex-col items-center text-center">
-                <Monitor className="h-12 w-12 text-blue-500 mb-4" />
+                <Monitor className="h-12 w-12 text-orange-500 mb-4" />
                 <h3 className="font-medium text-lg">웹</h3>
                 <p className="text-zinc-400 mt-2">모든 브라우저에서 접속 가능한 웹 버전을 제공합니다.</p>
               </div>
               
               <div className="flex flex-col items-center text-center">
-                <CreditCard className="h-12 w-12 text-blue-500 mb-4" />
+                <CreditCard className="h-12 w-12 text-orange-500 mb-4" />
                 <h3 className="font-medium text-lg">하나의 구독</h3>
                 <p className="text-zinc-400 mt-2">하나의 구독으로 모든 기기에서 동기화된 서비스를 이용하세요.</p>
               </div>
@@ -276,7 +276,7 @@ const PricingPage: React.FC = () => {
             </p>
             <Dialog>
               <DialogTrigger asChild>
-                <Button size="lg" className="bg-blue-500 hover:bg-blue-600 text-black" disabled>
+                <Button size="lg" className="bg-orange-500 hover:bg-orange-600 text-black" disabled>
                   무료로 시작하기
                 </Button>
               </DialogTrigger>
@@ -289,7 +289,7 @@ const PricingPage: React.FC = () => {
                 </DialogHeader>
                 <div className="flex flex-col gap-4 py-4">
                   <p className="flex items-center gap-2">
-                    <AlertCircle className="h-5 w-5 text-blue-500" />
+                    <AlertCircle className="h-5 w-5 text-orange-500" />
                     이미 계정이 있다면 로그인해주세요.
                   </p>
                   <Button onClick={() => window.location.href = "/auth"} className="w-full">
@@ -304,7 +304,7 @@ const PricingPage: React.FC = () => {
         {/* 준비중 오버레이 */}
         <div className="absolute inset-0 bg-zinc-900/50 backdrop-blur-[2px] flex flex-col items-center justify-start pt-72 z-20">
           <div className="text-center">
-            <Construction className="h-16 w-16 text-blue-400 mb-6 inline-block" />
+            <Construction className="h-16 w-16 text-orange-400 mb-6 inline-block" />
             <h2 className="text-3xl font-bold text-white mb-3">페이지 준비중</h2>
             <p className="text-zinc-300 text-center max-w-md">
               현재 요금제 페이지는 준비 중입니다. 곧 새로운 모습으로 찾아뵙겠습니다!

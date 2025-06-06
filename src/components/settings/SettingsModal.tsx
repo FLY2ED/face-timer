@@ -202,7 +202,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       id="name"
                       value={displayName}
                       onChange={(e) => setDisplayName(e.target.value)}
-                      className="bg-zinc-800 border-zinc-700 text-white placeholder-zinc-500 focus:border-blue-500 focus:ring-blue-500 rounded-md mt-1"
+                      className="bg-zinc-800 border-zinc-700 text-white placeholder-zinc-500 focus:border-orange-500 focus:ring-orange-500 rounded-md mt-1"
                     />
                   </div>
                   <div>
@@ -215,7 +215,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     />
                   </div>
                   <Button
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-md"
+                    className="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-2.5 rounded-md"
                     onClick={handleSaveProfile}
                     disabled={loading}
                   >
@@ -311,7 +311,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     onChange={(e) =>
                       updateSetting("appearance", "language", e.target.value)
                     }
-                    className="bg-zinc-700 border border-zinc-600 text-zinc-200 rounded-md px-2 py-1 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                    className="bg-zinc-700 border border-zinc-600 text-zinc-200 rounded-md px-2 py-1 text-sm focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
                   >
                     <option value="ko">한국어</option>
                     <option value="en">English</option>
@@ -374,7 +374,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <p className="text-lg font-semibold text-white">무료</p>
                       <p className="text-sm text-zinc-400">기본 기능만 이용 가능</p>
                     </div>
-                    <Button size="sm" className="bg-blue-500 hover:bg-blue-600 text-white text-xs px-3 py-1.5 h-auto rounded-md" onClick={handleViewPricing}>업그레이드</Button>
+                    <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-3 py-1.5 h-auto rounded-md" onClick={handleViewPricing}>업그레이드</Button>
                   </div>
                 </div>
 
@@ -391,7 +391,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </div>
                     <div className="flex justify-between">
                       <span className="text-zinc-400">카메라 자동 감지</span>
-                      <span className="text-blue-400">프로 전용</span>
+                      <span className="text-orange-400">프로 전용</span>
                     </div>
                   </div>
                 </div>

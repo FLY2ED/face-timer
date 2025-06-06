@@ -143,25 +143,25 @@ export const defaultTasks: Task[] = [
   {
     id: "default-1",
     title: "학습",
-    icon: "/placeholder.svg",
+    icon: "GraduationCap",
     requiresAuth: false
   },
   {
     id: "default-2",
     title: "업무",
-    icon: "/placeholder.svg",
+    icon: "Briefcase",
     requiresAuth: false
   },
   {
     id: "default-3",
     title: "독서",
-    icon: "/placeholder.svg",
+    icon: "BookOpen",
     requiresAuth: false
   },
   {
     id: "default-4",
-    title: "기타",
-    icon: "/placeholder.svg",
+    title: "코딩",
+    icon: "Code",
     requiresAuth: false
   },
 ];

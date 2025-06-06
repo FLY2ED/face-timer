@@ -1,7 +1,20 @@
 import React, { useState, useEffect } from "react";
 import { useTimer } from "@/contexts/TimerContext";
+import { formatDuration } from "@/utils/timeUtils";
 import { Button } from "@/components/ui/button";
-import { Plus, Clock, BookOpen, Briefcase, MoreHorizontal, GraduationCap, Code, Music, Dumbbell, Coffee, Heart } from "lucide-react";
+import {
+  Plus,
+  Clock,
+  BookOpen,
+  Briefcase,
+  MoreHorizontal,
+  GraduationCap,
+  Code,
+  Music,
+  Dumbbell,
+  Coffee,
+  Heart,
+} from "lucide-react";
 import { AddTaskDialog } from "./AddTaskDialog";
 import { cn } from "@/lib/utils";
 import { defaultTasks as mockTasks, users as mockUsers } from "@/data/mockData";
@@ -28,7 +41,7 @@ const iconMapping: Record<string, React.ElementType> = {
   MoreHorizontal,
   // 이름으로 Lucide 아이콘 매핑
   Clock,
-  Plus
+  Plus,
 };
 
 interface TaskSelectorProps {
@@ -37,11 +50,57 @@ interface TaskSelectorProps {
 
 const MOCK_CURRENT_USER_ID = mockUsers[0]?.id || "user1";
 
-export const TaskSelector: React.FC<TaskSelectorProps> = ({ onRequireAuth }) => {
-  const { startTimer, activeTask } = useTimer();
+export const TaskSelector: React.FC<TaskSelectorProps> = ({
+  onRequireAuth,
+}) => {
+  const { startTimer, activeTask, elapsedTime, isActive } = useTimer();
   const [tasks, setTasks] = useState<AppTask[]>([]);
   const [showAddTask, setShowAddTask] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [taskTimes, setTaskTimes] = useState<Record<string, number>>({});
+
+  // 작업 시간 로드 및 실시간 업데이트
+  const loadTaskTimes = () => {
+    try {
+      const savedTaskTimes = JSON.parse(
+        localStorage.getItem("task_times") || "{}"
+      );
+      setTaskTimes(savedTaskTimes);
+    } catch {
+      setTaskTimes({});
+    }
+  };
+
+  useEffect(() => {
+    // 초기 로드
+    loadTaskTimes();
+
+    // localStorage 변경 감지
+    const handleStorageChange = () => {
+      loadTaskTimes();
+    };
+
+    window.addEventListener("storage", handleStorageChange);
+
+    // 주기적으로 업데이트 (타이머가 실행 중일 때)
+    const interval = setInterval(() => {
+      loadTaskTimes();
+    }, 1000);
+
+    return () => {
+      window.removeEventListener("storage", handleStorageChange);
+      clearInterval(interval);
+    };
+  }, []);
+
+  // 활성 작업의 현재 시간 계산
+  const getCurrentTaskTime = (taskId: string) => {
+    const savedTime = taskTimes[taskId] || 0;
+    if (activeTask?.id === taskId && isActive) {
+      return savedTime + elapsedTime;
+    }
+    return savedTime;
+  };
 
   const fetchTasks = async () => {
     setLoading(true);
@@ -60,15 +119,15 @@ export const TaskSelector: React.FC<TaskSelectorProps> = ({ onRequireAuth }) => 
 
     const handleTaskAdded = (event: Event) => {
       const customEvent = event as CustomEvent<AppTask>;
-      setTasks(prevTasks => [...prevTasks, customEvent.detail]);
+      setTasks((prevTasks) => [...prevTasks, customEvent.detail]);
     };
 
-    window.addEventListener('taskAdded', handleTaskAdded);
-    return () => window.removeEventListener('taskAdded', handleTaskAdded);
+    window.addEventListener("taskAdded", handleTaskAdded);
+    return () => window.removeEventListener("taskAdded", handleTaskAdded);
   }, []);
 
   const handleAddTask = () => {
-    if (onRequireAuth('새 작업 추가')) {
+    if (onRequireAuth("새 작업 추가")) {
       setShowAddTask(true);
     }
   };
@@ -78,7 +137,10 @@ export const TaskSelector: React.FC<TaskSelectorProps> = ({ onRequireAuth }) => 
       <div className="mt-8 flex flex-col items-center">
         <div className="w-full max-w-sm space-y-2">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="h-12 bg-zinc-700/20 rounded-md animate-pulse" />
+            <div
+              key={i}
+              className="h-12 bg-zinc-700/20 rounded-md animate-pulse"
+            />
           ))}
         </div>
       </div>
@@ -92,14 +154,18 @@ export const TaskSelector: React.FC<TaskSelectorProps> = ({ onRequireAuth }) => 
           <Clock className="h-8 w-8 text-zinc-400" />
           <div className="space-y-1">
             <p className="text-sm text-zinc-300">아직 작업이 없습니다</p>
-            <p className="text-xs text-zinc-500">새 작업을 추가하고 시간을 측정해보세요</p>
+            <p className="text-xs text-zinc-500">
+              새 작업을 추가하고 시간을 측정해보세요
+            </p>
           </div>
         </div>
         <AddTaskDialog
           open={showAddTask}
           onOpenChange={setShowAddTask}
           onAddTask={(newTask) => {
-            window.dispatchEvent(new CustomEvent('taskAdded', { detail: newTask }));
+            window.dispatchEvent(
+              new CustomEvent("taskAdded", { detail: newTask })
+            );
           }}
         />
       </div>
@@ -107,30 +173,34 @@ export const TaskSelector: React.FC<TaskSelectorProps> = ({ onRequireAuth }) => 
   }
 
   return (
-    <div className="mt-8 flex flex-col items-center">
-      <div className="w-full max-w-sm space-y-2">
+    <div className="mt-20 flex flex-col items-center">
+      <div className="w-full max-w-sm space-y-3">
+        <div className="text-sm text-white font-medium">작업</div>
         {tasks.map((task) => (
           <button
             key={task.id}
             onClick={() => startTimer(task)}
             className={cn(
-              "w-full p-3 flex items-center gap-3 rounded-md text-white",
-              "hover:bg-white/10 transition-colors",
-              activeTask?.id === task.id && "bg-blue-500/20 ring-1 ring-blue-500"
+              "w-full p-3 flex items-center gap-3 rounded-xl text-white",
+              "hover:bg-white/10 bg-zinc-800/50 transition-all duration-300 ease-in-out",
+              activeTask?.id === task.id && "bg-orange-500/20"
             )}
           >
             <div className="flex-shrink-0">
               {task.icon && iconMapping[task.icon] ? (
-                <div 
-                  className="h-6 w-6 rounded-md flex items-center justify-center"
+                <div
+                  className={cn(
+                    "h-6 w-6 rounded-md flex items-center justify-center",
+                    activeTask?.id === task.id && "!bg-orange-500/20"
+                  )}
                   style={{ backgroundColor: task.color || "#3F3F46" }}
                 >
-                  {React.createElement(iconMapping[task.icon], { 
-                    className: "w-4 h-4 text-white"
+                  {React.createElement(iconMapping[task.icon], {
+                    className: "w-4 h-4 text-white",
                   })}
                 </div>
               ) : (
-                <div 
+                <div
                   className="h-6 w-6 rounded-md flex items-center justify-center"
                   style={{ backgroundColor: task.color || "#3F3F46" }}
                 >
@@ -140,7 +210,31 @@ export const TaskSelector: React.FC<TaskSelectorProps> = ({ onRequireAuth }) => 
                 </div>
               )}
             </div>
-            <span className="text-sm">{task.title}</span>
+            <div className="text-sm font-medium">{task.title}</div>
+            <div
+              className={cn(
+                "text-xs ml-auto transition-all duration-500 ease-in-out",
+                activeTask?.id === task.id 
+                  ? (isActive ? "text-orange-500" : "text-white")
+                  : "text-zinc-400"
+              )}
+            >
+              <span className="inline-block transition-all duration-500 ease-in-out transform opacity-100">
+                {(() => {
+                  // 현재 작업이 진행 중인지 확인
+                  if (activeTask?.id === task.id && isActive) {
+                    return "진행중";
+                  }
+                  
+                  // 진행 중이 아닐 때는 누적 시간 표시 (현재 진행시간 + 이전 저장시간)
+                  const savedTime = taskTimes[task.id] || 0;
+                  const currentTime = activeTask?.id === task.id ? elapsedTime : 0;
+                  const totalTime = savedTime + currentTime;
+                  
+                  return totalTime > 0 ? formatDuration(totalTime) : "";
+                })()}
+              </span>
+            </div>
           </button>
         ))}
       </div>
@@ -149,7 +243,7 @@ export const TaskSelector: React.FC<TaskSelectorProps> = ({ onRequireAuth }) => 
         open={showAddTask}
         onOpenChange={setShowAddTask}
         onAddTask={(newTask) => {
-          setTasks(prev => [...prev, newTask]);
+          setTasks((prev) => [...prev, newTask]);
         }}
       />
     </div>
