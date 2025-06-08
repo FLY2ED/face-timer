@@ -172,12 +172,6 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
     },
     onFaceNotDetected: () => {
       console.log("❌ 얼굴 감지 실패 - 대기 상태 리셋");
-      console.log("현재 타이머 상태:", { 
-        isActive, 
-        isPaused, 
-        isCameraMode, 
-        activeTask: !!activeTask 
-      });
       
       // 얼굴 감지 대기 상태 리셋
       if (faceDetectionTimeoutRef.current) {
@@ -187,7 +181,19 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
       setFaceDetectedStartTime(null);
       setCanStartTimer(false);
       
-      // 카메라 모드이고 타이머가 실행 중이며 일시정지 상태가 아닐 때만 일시정지
+      // 타이머가 실행 중이 아니면 일시정지 로직 실행하지 않음
+      if (!isActive) {
+        console.log("🔍 타이머가 실행 중이 아니므로 일시정지 불필요");
+        return;
+      }
+      
+      console.log("현재 타이머 상태:", { 
+        isActive, 
+        isPaused, 
+        isCameraMode, 
+        activeTask: !!activeTask 
+      });
+      
       console.log("🔍 일시정지 조건 상세 확인:", {
         카메라모드: isCameraMode,
         타이머활성: isActive,
