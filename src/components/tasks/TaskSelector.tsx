@@ -226,12 +226,15 @@ export const TaskSelector: React.FC<TaskSelectorProps> = ({
                     return "진행중";
                   }
                   
-                  // 진행 중이 아닐 때는 누적 시간 표시 (현재 진행시간 + 이전 저장시간)
-                  const savedTime = taskTimes[task.id] || 0;
-                  const currentTime = activeTask?.id === task.id ? elapsedTime : 0;
-                  const totalTime = savedTime + currentTime;
-                  
-                  return totalTime > 0 ? formatDuration(totalTime) : "";
+                  // 진행 중이 아닐 때는 저장된 시간만 표시
+                  if (activeTask?.id === task.id && !isActive) {
+                    // 현재 선택된 작업이지만 중지된 상태: elapsedTime 사용 (이미 누적시간 포함)
+                    return elapsedTime > 0 ? formatDuration(elapsedTime) : "";
+                  } else {
+                    // 다른 작업: 저장된 시간만 사용
+                    const savedTime = taskTimes[task.id] || 0;
+                    return savedTime > 0 ? formatDuration(savedTime) : "";
+                  }
                 })()}
               </span>
             </div>

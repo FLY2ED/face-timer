@@ -78,7 +78,7 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
     faceDetectedStartTime,
     lastAnalysisResult,
     isVideoReady,
-    formattedTime,
+    formattedTime, // useTimerState에서 계산된 formattedTime 사용
     taskTimes,
     // Refs
     faceDetectionTimeoutRef,
@@ -100,7 +100,6 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
     setIsWaitingForFace,
     setIsCameraMode,
     setTaskTimes,
-    setFormattedTime,
     resetAllFaceStates,
     startFaceDetectionTimer,
     resetDailyRecords,
@@ -521,8 +520,6 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
 
   // active_sessions 테이블 업데이트 로직 삭제 (Supabase 의존)
   // useEffect(() => { ... });
-
-
 
   return (
     <motion.div layout className="w-full">

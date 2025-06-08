@@ -58,9 +58,9 @@ export const MainContent: React.FC = () => {
               }
             }}
             className="fixed top-8 right-8 z-10 px-4 py-2 rounded-xl border border-zinc-800 bg-zinc-900 text-zinc-200 hover:bg-zinc-800/50"
-            title="하루 기록 초기화"
+            title="기록 초기화"
           >
-            오늘 기록 초기화
+            기록 초기화
           </Button>
 
           <Button

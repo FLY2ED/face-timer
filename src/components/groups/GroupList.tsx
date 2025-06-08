@@ -80,7 +80,7 @@ export const GroupList: React.FC = () => {
                 variant="ghost" 
                 size="sm" 
                 className="p-0 h-7 w-7" 
-                onClick={() => setIsSearchGroupOpen(true)}
+                // onClick={() => setIsSearchGroupOpen(true)}
               >
                 <Search className="h-3.5 w-3.5" />
               </Button>
@@ -88,7 +88,7 @@ export const GroupList: React.FC = () => {
                 variant="ghost" 
                 size="sm" 
                 className="p-0 h-7 w-7" 
-                onClick={handleAddGroup}
+                // onClick={handleAddGroup}
               >
                 <Plus className="h-3.5 w-3.5" />
               </Button>
@@ -123,7 +123,7 @@ export const GroupList: React.FC = () => {
               variant="ghost" 
               size="sm" 
               className="p-0 h-7 w-7" 
-              onClick={() => setIsSearchGroupOpen(true)}
+              // onClick={() => setIsSearchGroupOpen(true)}
             >
               <Search className="h-3.5 w-3.5" />
             </Button>
@@ -131,7 +131,7 @@ export const GroupList: React.FC = () => {
               variant="ghost" 
               size="sm" 
               className="p-0 h-7 w-7" 
-              onClick={handleAddGroup}
+              // onClick={handleAddGroup}
             >
               <Plus className="h-3.5 w-3.5" />
             </Button>

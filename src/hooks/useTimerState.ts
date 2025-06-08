@@ -34,7 +34,8 @@ export const useTimerState = () => {
 
   // 모든 작업의 총 시간 계산
   const getTotalTaskTime = useCallback(() => {
-    return Object.values(taskTimes).reduce((total, time) => total + time, 0);
+    const total = Object.values(taskTimes).reduce((total, time) => total + time, 0);
+    return total;
   }, [taskTimes]);
 
   // 포맷된 시간 업데이트
@@ -42,14 +43,18 @@ export const useTimerState = () => {
     if (timerContext.isActive) {
       // 타이머 진행 중에는 현재 경과 시간 표시
       setFormattedTime(formatDuration(timerContext.elapsedTime));
-    } else if (timerContext.activeTask) {
-      // 타이머 정지 상태이지만 활성 작업이 있으면 해당 작업의 총 시간 표시
-      const activeTaskTotalTime = (taskTimes[timerContext.activeTask.id] || 0) + timerContext.elapsedTime;
-      setFormattedTime(formatDuration(activeTaskTotalTime));
     } else {
-      // 작업이 없으면 전체 총 시간 표시
+      // 타이머 정지 상태에서는 항상 전체 총 시간 표시
       const totalTime = getTotalTaskTime();
-      setFormattedTime(formatDuration(totalTime));
+      
+      if (timerContext.activeTask) {
+        // 현재 활성 작업이 있으면 taskTimes에서 모든 작업의 시간을 합산
+        // (정지 상태에서는 elapsedTime을 사용하지 않고 저장된 taskTimes만 사용)
+        setFormattedTime(formatDuration(totalTime));
+      } else {
+        // 활성 작업이 없으면 저장된 모든 작업들의 총 시간
+        setFormattedTime(formatDuration(totalTime));
+      }
     }
   }, [timerContext.elapsedTime, timerContext.isActive, timerContext.activeTask, getTotalTaskTime, taskTimes]);
 
@@ -166,14 +171,7 @@ export const useTimerState = () => {
     }, [timerContext, taskTimes, cameraActions]),
 
     handleStopTimer: useCallback(() => {
-      console.log("🛑 타이머 정지 시작");
-      
       if (timerContext.activeTask) {
-        console.log("Timer session stopped (local):", {
-          taskId: timerContext.activeTask.id,
-          duration: timerContext.elapsedTime,
-        });
-        
         // 작업 시간 저장
         const currentTaskTimes = { ...taskTimes };
         currentTaskTimes[timerContext.activeTask.id] = timerContext.elapsedTime;
@@ -189,8 +187,6 @@ export const useTimerState = () => {
       
       // 카메라 모드 비활성화
       cameraActions.disableCameraMode();
-      
-      console.log("✅ 타이머 정지 완료");
     }, [timerContext, cameraActions, taskTimes]),
 
     pauseTimer: useCallback(() => {
