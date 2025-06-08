@@ -43,7 +43,7 @@ export const MainContent: React.FC = () => {
         <Timer onCameraModeChange={handleCameraModeChange} />
         <TaskSelector 
           onRequireAuth={handleRequireAuth} 
-          disabled={isCameraMode && isActive}
+          disabled={isActive}
         />
       </div>
       

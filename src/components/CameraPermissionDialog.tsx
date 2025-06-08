@@ -73,7 +73,7 @@ export const CameraPermissionDialog: React.FC<CameraPermissionDialogProps> = ({
               <div>
                 <h4 className="text-white/80 text-sm font-bold">개인정보 보호</h4>
                 <p className="text-zinc-400/80 text-xs mt-1">
-                  카메라 영상은 오직 집중도 분석에만 사용되며,<br/> 서버에 전송되거나 저장되지 않습니다.
+                  카메라 영상은 오직 분석에만 사용되며,<br/> 서버에 전송되거나 저장되지 않습니다.
                 </p>
               </div>
             </div>

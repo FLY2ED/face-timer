@@ -191,6 +191,28 @@ export const TimerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     saveTimerState();
   }, [activeTask, elapsedTime, isActive, isPaused, taskTimes]);
 
+  // isPaused 상태 변화 추적
+  useEffect(() => {
+    console.log("🔄 isPaused 상태 변화:", {
+      이전값: "추적불가",
+      현재값: isPaused,
+      isActive,
+      activeTask: activeTask?.title || null,
+      timestamp: new Date().toLocaleTimeString()
+    });
+  }, [isPaused]);
+
+  // isActive 상태 변화 추적
+  useEffect(() => {
+    console.log("🔄 isActive 상태 변화:", {
+      이전값: "추적불가", 
+      현재값: isActive,
+      isPaused,
+      activeTask: activeTask?.title || null,
+      timestamp: new Date().toLocaleTimeString()
+    });
+  }, [isActive]);
+
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
 
@@ -239,16 +261,41 @@ export const TimerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const pauseTimer = () => {
+    console.log("⏸️ pauseTimer 호출됨 - 현재 상태:", {
+      isActive,
+      isPaused,
+      elapsedTime,
+      activeTask: activeTask?.title || null,
+      조건충족: isActive && !isPaused
+    });
+    
     if (isActive && !isPaused) {
+      console.log("✅ pauseTimer 조건 충족 - 일시정지 실행");
       setIsPaused(true);
       // 일시정지 시 현재 경과 시간 저장
       setLastElapsedTime(elapsedTime);
-      // console.log(`타이머 일시정지: ${elapsedTime}ms에서 멈춤`);
+      console.log(`✅ 타이머 일시정지 완료: ${elapsedTime}ms에서 멈춤`);
+    } else {
+      console.log("❌ pauseTimer 조건 미충족:", {
+        isActive: isActive ? "✅" : "❌",
+        isPausedNot: !isPaused ? "✅" : "❌",
+        현재isPaused값: isPaused
+      });
     }
   };
 
   const resumeTimer = () => {
+    console.log("▶️ resumeTimer 호출됨 - 현재 상태:", {
+      isPaused,
+      isActive,
+      lastElapsedTime,
+      elapsedTime,
+      activeTask: activeTask?.title || null,
+      조건충족: isPaused
+    });
+    
     if (isPaused) {
+      console.log("✅ resumeTimer 조건 충족 - 재개 실행");
       console.log("타이머 재개 전:", {
         lastElapsedTime,
         현재시간: Date.now()
@@ -260,9 +307,15 @@ export const TimerProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setStartTime(newStartTime);
       setIsPaused(false);
       
-      console.log("타이머 재개 후:", {
+      console.log("✅ 타이머 재개 완료:", {
         조정된시작시간: newStartTime,
         계속할경과시간: lastElapsedTime
+      });
+    } else {
+      console.log("❌ resumeTimer 조건 미충족 - isPaused가 false임:", {
+        현재isPaused값: isPaused,
+        isActive,
+        elapsedTime
       });
     }
   };

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useTimer } from "@/contexts/TimerContext";
 import { formatDuration } from "@/utils/timeUtils";
 import { Button } from "@/components/ui/button";
@@ -118,9 +118,98 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
   const [restTimerActive, setRestTimerActive] = useState(false);
   const [hasTodaySession, setHasTodaySession] = useState(false);
   const [isCameraAvailable, setIsCameraAvailable] = useState<boolean | null>(null);
+  const [isManualPause, setIsManualPause] = useState(false); // 수동 일시정지 여부
+  const [pauseReason, setPauseReason] = useState<string | null>(null); // 일시정지 이유
+  const [lastAutoResumeTime, setLastAutoResumeTime] = useState<number>(0); // 마지막 자동 재개 시간
+  const [lastAutoPauseTime, setLastAutoPauseTime] = useState<number>(0); // 마지막 자동 일시정지 시간
 
+  // -------------- 상태 Ref --------------
+  // useFaceDetection 훅에서 전달받은 콜백이 최신 상태를 참조하도록 ref 사용
+  const isCameraModeRef = useRef(isCameraMode);
+  const isPausedRef = useRef(isPaused);
+  const isWaitingForFaceRef = useRef(isWaitingForFace);
+  const canStartTimerRef = useRef(canStartTimer);
+  const isManualPauseRef = useRef(isManualPause);
+  const isActiveRef = useRef(isActive);
+
+  useEffect(() => { isCameraModeRef.current = isCameraMode; }, [isCameraMode]);
+  useEffect(() => { isPausedRef.current = isPaused; }, [isPaused]);
+  useEffect(() => { isWaitingForFaceRef.current = isWaitingForFace; }, [isWaitingForFace]);
+  useEffect(() => { canStartTimerRef.current = canStartTimer; }, [canStartTimer]);
+  useEffect(() => { isManualPauseRef.current = isManualPause; }, [isManualPause]);
+  useEffect(() => { isActiveRef.current = isActive; }, [isActive]);
+
+  // resume/pause 함수도 ref에 저장하여 항상 최신 함수를 호출하도록 함
+  const resumeTimerRef = useRef(resumeTimer);
+  const pauseTimerRef = useRef(pauseTimer);
+  useEffect(() => { resumeTimerRef.current = resumeTimer; }, [resumeTimer]);
+  useEffect(() => { pauseTimerRef.current = pauseTimer; }, [pauseTimer]);
+  
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const { isCameraEnabled, videoRef, toggleCamera } = useCamera();
+  
+  // TimerContext 직접 접근 (상태 동기화 확인용)
+  const timerContext = useTimer();
+
+  // 얼굴 감지 콜백 (상태 ref 사용, dependencies 없음 -> 안정적인 레퍼런스 유지)
+  const handleFaceDetected = useCallback((result: FaceAnalysisResult) => {
+    if (!result) return;
+
+    setLastAnalysisResult(result);
+
+    // 얼굴 감지시 즉시 타이머 시작 (대기 중인 경우)
+    if (isWaitingForFaceRef.current && !canStartTimerRef.current) {
+      console.log("👀 얼굴 감지됨 - 타이머 시작 준비");
+      setCanStartTimer(true);
+      setFaceDetectedStartTime(Date.now());
+      if (faceDetectionTimeoutRef.current) {
+        clearTimeout(faceDetectionTimeoutRef.current);
+        faceDetectionTimeoutRef.current = null;
+      }
+    }
+
+    // 자동 재개: 일시정지 상태이고 수동 일시정지가 아닌 경우
+    if (
+      isCameraModeRef.current &&
+      isPausedRef.current &&
+      !isManualPauseRef.current
+    ) {
+      console.log("▶️ 얼굴 감지 - 자동 재개");
+      setIsManualPause(false);
+      setPauseReason(null);
+      resumeTimerRef.current();
+    }
+  }, []);
+
+  const handleFaceNotDetected = useCallback(() => {
+    // 얼굴 감지 대기 상태 리셋
+    if (faceDetectionTimeoutRef.current) {
+      clearTimeout(faceDetectionTimeoutRef.current);
+      faceDetectionTimeoutRef.current = null;
+    }
+    setFaceDetectedStartTime(null);
+    setCanStartTimer(false);
+
+    // 자동 일시정지 조건 확인 로그
+    console.log("🔍 자동 일시정지 조건 확인:", {
+      isCameraMode: isCameraModeRef.current,
+      isActive: isActiveRef.current,
+      isPaused: isPausedRef.current,
+      조건충족: isCameraModeRef.current && isActiveRef.current && !isPausedRef.current
+    });
+
+    // 자동 일시정지: 타이머가 활성 상태이고 일시정지되지 않았으면 일시정지
+    if (
+      isCameraModeRef.current &&
+      isActiveRef.current &&
+      !isPausedRef.current
+    ) {
+      console.log("⏸️ 얼굴 미감지 - 자동 일시정지");
+      setIsManualPause(false);
+      setPauseReason("얼굴이 감지되지 않아 일시정지되었습니다");
+      pauseTimerRef.current();
+    }
+  }, []);
 
   const {
     isDetecting,
@@ -133,97 +222,13 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
     videoRef,
     canvasRef,
     showPreview: true,
-    onFaceDetected: (result) => {
-      // console.log("🎯 Timer에서 onFaceDetected 콜백 받음:", { 
-      //   result, 
-      //   isCameraMode, 
-      //   isWaitingForFace, 
-      //   isActive,
-      //   canStartTimer
-      // });
-      if (result) {
-        setLastAnalysisResult(result);
-        // console.log("✅ lastAnalysisResult 업데이트됨:", result);
-        
-        // 얼굴 감지 5초 대기 로직
-        console.log(isWaitingForFace, canStartTimer)
-        if (isWaitingForFace && !canStartTimer) {
-          const currentTime = Date.now();
-          
-          if (!faceDetectedStartTime) {
-            startFaceDetectionTimer();
-          }
-        } else if (isCameraMode && isActive && isPaused && result.attentionScore > 40) {
-          console.log("▶️ 얼굴 재감지로 인한 자동 재개 (집중도:", result.attentionScore, ")");
-          resumeTimer();
-        }
-        
-        // 피로도가 높거나 집중도가 낮을 때 일시정지
-        if (
-          isCameraMode &&
-          (result.fatigueLevel === "high" || result.attentionScore < 30) &&
-          isActive &&
-          !isPaused
-        ) {
-          console.log("😴 피로도/집중도 저하로 인한 자동 일시정지");
-          pauseTimer();
-        }
-      }
-    },
-    onFaceNotDetected: () => {
-      console.log("❌ 얼굴 감지 실패 - 대기 상태 리셋");
-      
-      // 얼굴 감지 대기 상태 리셋
-      if (faceDetectionTimeoutRef.current) {
-        clearTimeout(faceDetectionTimeoutRef.current);
-        faceDetectionTimeoutRef.current = null;
-      }
-      setFaceDetectedStartTime(null);
-      setCanStartTimer(false);
-      
-      // 타이머가 실행 중이 아니면 일시정지 로직 실행하지 않음
-      if (!isActive) {
-        console.log("🔍 타이머가 실행 중이 아니므로 일시정지 불필요");
-        return;
-      }
-      
-      console.log("현재 타이머 상태:", { 
-        isActive, 
-        isPaused, 
-        isCameraMode, 
-        activeTask: !!activeTask 
-      });
-      
-      console.log("🔍 일시정지 조건 상세 확인:", {
-        카메라모드: isCameraMode,
-        타이머활성: isActive,
-        일시정지상태: isPaused,
-        activeTask존재: !!activeTask,
-        pauseTimer함수존재: !!pauseTimer
-      });
-      
-      if (isCameraMode && isActive && !isPaused && activeTask) {
-        console.log("⏸️ 모든 조건 충족 - 얼굴 미감지로 인한 자동 일시정지 실행");
-        try {
-          pauseTimer();
-          console.log("✅ 일시정지 함수 호출 완료");
-        } catch (error) {
-          console.error("❌ 일시정지 함수 호출 실패:", error);
-        }
-      } else {
-        console.log("🔍 일시정지 실행 안됨 - 조건 미충족:", {
-          카메라모드: isCameraMode ? "✅" : "❌",
-          타이머활성: isActive ? "✅" : "❌", 
-          일시정지아님: !isPaused ? "✅" : "❌",
-          작업존재: activeTask ? "✅" : "❌"
-        });
-      }
-    },
+    onFaceDetected: handleFaceDetected,
+    onFaceNotDetected: handleFaceNotDetected,
   });
 
   useEffect(() => {
     // 카메라 모드이고, 타이머가 비활성 상태이고, 모델이 로드됨 (작업 선택은 필요하지 않음)
-    if (isCameraMode && !isActive && isModelLoaded && !isDetecting) {
+    if (isCameraMode && !isActiveRef.current && isModelLoaded && !isDetecting) {
       console.log("🎬 얼굴 감지 시작 (작업 선택 불필요)");
       setIsWaitingForFace(true);
       setFaceDetectedStartTime(null);
@@ -234,7 +239,7 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
       }
       startDetection();
     }
-  }, [isCameraMode, isActive, isModelLoaded, isDetecting]);
+  }, [isCameraMode, isActiveRef.current, isModelLoaded, isDetecting]);
 
   useEffect(() => {
     if (!isCameraMode || isDetecting || !isModelLoaded || !isCameraEnabled) {
@@ -270,11 +275,12 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
 
   // canStartTimer가 true가 되면 작업 선택 없이는 대기, 작업이 있으면 타이머 시작
   useEffect(() => {
-    if (canStartTimer && !isActive) {
+    if (canStartTimer && !isActiveRef.current) {
       if (activeTask) {
         console.log("🚀 자동 타이머 시작 (작업 이미 선택됨)");
         setIsWaitingForFace(false);
         setCanStartTimer(false);
+        setPauseReason(null); // 타이머 시작시 일시정지 이유 초기화
         startTimer(activeTask);
       } else {
         console.log("⏳ 얼굴 인식 완료 - 작업 선택 대기 중");
@@ -282,16 +288,17 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
         // canStartTimer는 유지하여 작업 선택 후 바로 시작되도록 함
       }
     }
-  }, [canStartTimer, activeTask, isActive, startTimer]);
+  }, [canStartTimer, activeTask, isActiveRef.current, startTimer]);
 
   // 작업 선택 후 canStartTimer가 true이면 즉시 타이머 시작
   useEffect(() => {
-    if (activeTask && canStartTimer && !isActive && isCameraMode) {
+    if (activeTask && canStartTimer && !isActiveRef.current && isCameraMode) {
       console.log("📋 작업 선택 후 즉시 타이머 시작");
       setCanStartTimer(false);
+      setPauseReason(null); // 타이머 시작시 일시정지 이유 초기화
       startTimer(activeTask);
     }
-  }, [activeTask, canStartTimer, isActive, isCameraMode, startTimer]);
+  }, [activeTask, canStartTimer, isActiveRef.current, isCameraMode, startTimer]);
 
   // canStartTimer 상태 변화 추적
   useEffect(() => {
@@ -303,31 +310,43 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
 
   // 간단한 상태 디버깅
   useEffect(() => {
-    console.log("🔍 주요 상태:", { isCameraMode, isActive, canStartTimer });
-  }, [isCameraMode, isActive, canStartTimer]);
+    console.log("🔍 주요 상태:", { isCameraMode, isActive: isActiveRef.current, canStartTimer });
+  }, [isCameraMode, isActiveRef.current, canStartTimer]);
 
   // isPaused 상태 변화 추적
   useEffect(() => {
     console.log("⏸️ isPaused 상태 변화:", { 
       isPaused, 
-      isActive, 
+      isActive: isActiveRef.current, 
       isCameraMode,
+      isManualPause,
+      pauseReason,
       timestamp: new Date().toLocaleTimeString()
     });
-  }, [isPaused, isActive, isCameraMode]);
+  }, [isPaused, isActiveRef.current, isCameraMode, isManualPause, pauseReason]);
 
   // 주요 상태들의 실시간 변화 추적
   useEffect(() => {
-    console.log("📊 전체 상태 스냅샷:", {
-      isCameraMode: isCameraMode,
-      isActive: isActive,
-      isPaused: isPaused,
-      activeTask: activeTask?.title || "없음",
-      isWaitingForFace: isWaitingForFace,
-      canStartTimer: canStartTimer,
-      timestamp: new Date().toLocaleTimeString()
-    });
-  }, [isCameraMode, isActive, isPaused, activeTask, isWaitingForFace, canStartTimer]);
+    // console.log("📊 전체 상태 스냅샷:", {
+    //   isCameraMode: isCameraMode,
+    //   useTimerState: {
+    //     isActive: isActive,
+    //     isPaused: isPaused,
+    //     activeTask: activeTask?.title || "없음",
+    //     elapsedTime: elapsedTime,
+    //     formattedTime: formattedTime
+    //   },
+    //   timerContext: {
+    //     isActive: timerContext.isActive,
+    //     isPaused: timerContext.isPaused,
+    //     activeTask: timerContext.activeTask?.title || "없음",
+    //     elapsedTime: timerContext.elapsedTime
+    //   },
+    //   isWaitingForFace: isWaitingForFace,
+    //   canStartTimer: canStartTimer,
+    //   timestamp: new Date().toLocaleTimeString()
+    // });
+  }, [isCameraMode, isActiveRef.current, isPaused, activeTask, isWaitingForFace, canStartTimer, timerContext.isActive, timerContext.isPaused, timerContext.elapsedTime, formattedTime, elapsedTime]);
 
   // 컴포넌트 언마운트 시 타이머 정리
   useEffect(() => {
@@ -434,9 +453,16 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
 
       try {
         console.log("🎬 카메라 활성화 시작...");
-        setIsWaitingForFace(false);
+        // 카메라 모드 진입 시 상태 초기화
         setLastAnalysisResult(null);
         setIsVideoReady(false);
+
+        // 타이머가 아직 시작되지 않은 경우에만 얼굴 인식 대기 상태로 설정
+        if (!isActiveRef.current) {
+          setIsWaitingForFace(true);
+        } else {
+          setIsWaitingForFace(false);
+        }
 
         // 카메라가 이미 활성화되어 있으면 일단 끄기
         if (isCameraEnabled) {
@@ -533,14 +559,14 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
 
   // 휴식 타이머 시작 로직 (hasTodaySession이 false이므로 실행되지 않음)
   useEffect(() => {
-    if (!isActive && !restTimerActive && hasTodaySession) {
+    if (!isActiveRef.current && !restTimerActive && hasTodaySession) {
       setRestTimerActive(true);
       setRestTime(0);
-    } else if (isActive) {
+    } else if (isActiveRef.current) {
       setRestTimerActive(false);
       setRestTime(0);
     }
-  }, [isActive, restTimerActive, hasTodaySession]); // restTimerActive 의존성 추가
+  }, [isActiveRef.current, restTimerActive, hasTodaySession]); // restTimerActive 의존성 추가
 
   // 휴식 타이머 실행 로직 (restTimerActive가 false이므로 실행되지 않음)
   useEffect(() => {
@@ -571,18 +597,29 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
           <div className="flex items-center justify-center gap-2 text-sm">
             <div
               className={cn("px-5 py-2 rounded-full text-sm font-medium", {
-                "bg-zinc-500/20 text-zinc-300": !isActive, // 대기중
-                "bg-orange-300/20 text-orange-100": isActive && isPaused, // 일시정지
-                "bg-orange-500/20 text-orange-200": isActive && !isPaused, // 진행중
+                "bg-zinc-500/20 text-zinc-300": !isActiveRef.current, // 대기중
+                "bg-orange-300/20 text-orange-100": isActiveRef.current && isPaused, // 일시정지
+                "bg-orange-500/20 text-orange-200": isActiveRef.current && !isPaused, // 진행중
               })}
             >
-              {isActive ? (isPaused ? "일시정지" : "진행중") : "대기중"}
+              {isActiveRef.current ? (isPaused ? "일시정지" : "진행중") : "대기중"}
             </div>
-            {isCameraMode && (
-              <div className="pl-[18px] pr-5 py-2 rounded-full text-sm font-medium bg-orange-500/20 text-orange-200 flex items-center gap-2">
-                <Smile className="w-4 h-4" /> 얼굴 인식중
+            
+            {/* 일시정지 이유 표시 */}
+            {isPaused && pauseReason && (
+              <div className="px-5 py-2 rounded-full text-sm bg-yellow-500/20 text-yellow-200 text-center max-w-xs">
+                {pauseReason}
               </div>
             )}
+            
+            {/* 카메라 모드 상태 표시 */}
+            <div className="flex items-center gap-2">
+              {isCameraMode && (
+                <div className="pl-[18px] pr-5 py-2 rounded-full text-sm font-medium bg-orange-500/20 text-orange-200 flex items-center gap-2">
+                  <Smile className="w-4 h-4" /> 얼굴 인식중
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -825,7 +862,7 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
       </div>
 
               <AnimatePresence mode="wait">
-          {activeTask && (isActive || isWaitingForFace) && (
+          {activeTask && (isActiveRef.current || isWaitingForFace) && (
             <motion.div
               layout
               initial={{ opacity: 0 }}
@@ -841,7 +878,20 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
             <Button
               variant="default"
               size="lg"
-              onClick={handlePause}
+              onClick={() => {
+                if (isPaused) {
+                  // 재개 시 수동 일시정지 상태 리셋
+                  setIsManualPause(false);
+                  setPauseReason(null);
+                  console.log("▶️ 수동 재개");
+                } else {
+                  // 일시정지 시 수동 일시정지 표시
+                  setIsManualPause(true);
+                  setPauseReason("수동 일시정지");
+                  console.log("⏸️ 수동 일시정지");
+                }
+                handlePause();
+              }}
               disabled={isWaitingForFace}
               className="h-10 flex-1 px-4 bg-zinc-700/50 text-zinc-200 hover:bg-zinc-600/50 rounded-xl"
             >
@@ -864,13 +914,19 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
                 // 1. 먼저 타이머 정지
                 handleStopTimer();
                 
-                // 2. 카메라 모드가 켜져있으면 추가로 카메라 끄기
+                // 2. 수동 일시정지 상태 리셋
+                setIsManualPause(false);
+                setPauseReason(null);
+                setLastAutoResumeTime(0);
+                setLastAutoPauseTime(0);
+                
+                // 3. 카메라 모드가 켜져있으면 추가로 카메라 끄기
                 if (isCameraMode && isCameraEnabled) {
                   console.log("🔄 추가 카메라 비활성화");
                   await toggleCamera();
                 }
                 
-                // 3. 카메라 모드 상태 완전 리셋
+                // 4. 카메라 모드 상태 완전 리셋
                 setIsCameraMode(false);
                 onCameraModeChange?.(false);
                 

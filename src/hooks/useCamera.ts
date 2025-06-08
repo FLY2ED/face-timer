@@ -16,7 +16,7 @@ export const useCamera = () => {
   const [permissionRequested, setPermissionRequested] = useState(false);
 
   // 카메라 권한 컨텍스트에서 선택된 카메라 정보 가져오기
-  const { selectedCameraId, stream: permissionStream } = useCameraPermissionContext();
+  const { selectedCameraId, stream: permissionStream, stopCamera: stopPermissionCamera } = useCameraPermissionContext();
 
   // 비디오 요소 관찰하는 함수
   const monitorVideoElement = useCallback(() => {
@@ -77,25 +77,27 @@ export const useCamera = () => {
     try {
       console.log("카메라 권한 요청 시작...", selectedCameraId ? `선택된 카메라: ${selectedCameraId}` : '기본 카메라');
       
-      // 권한 컨텍스트에 스트림이 있으면 그것을 사용
+      // 권한 컨텍스트의 스트림 사용 (단, live 상태인지 확인)
       if (permissionStream) {
-        console.log("권한 컨텍스트의 스트림 사용");
-        streamRef.current = permissionStream;
-        
-        // 비디오 요소가 있으면 연결
-        if (videoRef.current) {
-          console.log("비디오 요소에 스트림 연결");
-          videoRef.current.srcObject = permissionStream;
-          
-          try {
-            await videoRef.current.play();
-            console.log("비디오 재생 시작됨");
-          } catch (playError) {
-            console.warn("자동 재생 실패 (사용자 상호작용 필요):", playError);
+        const hasLiveTrack = permissionStream.getVideoTracks().some(track => track.readyState === 'live');
+        if (hasLiveTrack) {
+          console.log("권한 컨텍스트의 live 스트림 사용");
+          streamRef.current = permissionStream;
+          // 비디오 요소가 있으면 연결
+          if (videoRef.current) {
+            console.log("비디오 요소에 스트림 연결");
+            videoRef.current.srcObject = permissionStream;
+            try {
+              await videoRef.current.play();
+              console.log("비디오 재생 시작됨");
+            } catch (playError) {
+              console.warn("자동 재생 실패 (사용자 상호작용 필요):", playError);
+            }
           }
+          return permissionStream;
+        } else {
+          console.log("권한 컨텍스트의 스트림이 inactive 상태입니다. 새 스트림을 요청합니다.");
         }
-        
-        return permissionStream;
       }
       
       // 권한 컨텍스트에 스트림이 없으면 직접 요청
@@ -192,17 +194,18 @@ export const useCamera = () => {
       });
       streamRef.current = null;
     }
-    
+    // 권한 컨텍스트의 스트림도 종료
+    if (stopPermissionCamera) {
+      stopPermissionCamera();
+    }
     if (videoRef.current) {
-      // 비디오 요소 완전 초기화
       videoRef.current.srcObject = null;
-      videoRef.current.load(); // 비디오 요소 리셋
+      videoRef.current.load();
       console.log("비디오 요소에서 스트림 연결 해제 및 리셋됨");
     }
-    
-    setIsVideoReady(false); // 비디오 준비 상태도 리셋
+    setIsVideoReady(false);
     setPermissionRequested(false);
-  }, []);
+  }, [stopPermissionCamera]);
 
   const toggleCamera = useCallback(async () => {
     console.log("카메라 토글 요청됨, 현재 상태:", isCameraEnabled);

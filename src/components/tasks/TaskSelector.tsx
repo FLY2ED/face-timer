@@ -184,7 +184,7 @@ export const TaskSelector: React.FC<TaskSelectorProps> = ({
           작업
           {disabled && (
             <span className="text-xs text-orange-500 bg-orange-500/10 px-2 py-1 rounded-full">
-              카메라 모드 진행중
+              타이머 진행중
             </span>
           )}
         </div>

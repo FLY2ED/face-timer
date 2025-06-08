@@ -3,11 +3,11 @@
 ![main](readme/img1.png)
 ![screenshot](readme/img2.png)
 얼굴 인식 기술을 활용한 집중력 관리 및 시간 측정 서비스 (크로스 플랫폼 지원 예정)
-## 🎯 데모
+## 🎯 데모 (베타)
 
-[NALDA Timer 데모](https://timer.naldadev.com)
+[NALDA Timer 베타](https://timer.naldadev.com)
 
-> 💡 **참고**: 데모 버전에서는 일부 기능이 제한될 수 있습니다.
+> 💡 **참고**: 베타 버전이기 때문에 일부 기능이 제대로 작동하지 않을 수 있습니다.
 
 ## 📖 프로젝트 개요
 
@@ -17,7 +17,7 @@ NALDA Timer는 컴퓨터 비전 기술을 활용하여 사용자의 집중도를
 
 - **🎯 실시간 얼굴 인식**: [@vladmandic/human](https://github.com/vladmandic/human) 라이브러리를 활용한 고정밀 얼굴 감지
 - **👁️ 집중도 분석**: 눈 깜빡임, 하품, 시선 방향, 머리 자세 등을 종합 분석
-- **⏱️ 스마트 타이머**: 집중도에 따른 자동 일시정지 및 재개
+- **⏱️ 스마트 타이머**: 얼굴 감지 따른 자동 일시정지 및 재개
 - **🌗 반응형 UI**: 모던하고 직관적인 사용자 인터페이스
 
 ### 🎮 핵심 기능
@@ -39,15 +39,14 @@ NALDA Timer는 컴퓨터 비전 기술을 활용하여 사용자의 집중도를
 
 ### 사전 요구사항
 
-- Node.js 22.13.0
+- Node.js 20.x (최신 LTS 권장)
 - npm 또는 yarn 패키지 매니저
 - 웹캠이 있는 컴퓨터
 - 모던 웹 브라우저 (Chrome, Firefox, Safari, Edge)
 
 ### 설치 방법
 
-1. 저장소 클론
-```bash
+1. 저장소 클론```bash
 git clone https://github.com/your-username/face-timer.git
 cd face-timer
 ```
@@ -58,7 +57,7 @@ cd face-timer
 npm install
 
 # yarn 사용시
-yarn install
+yarn
 ```
 
 3. 개발 서버 실행
@@ -154,7 +153,13 @@ MAR = (||p2-p6|| + ||p3-p5||) / (2 * ||p1-p4||)
 
 ### 집중도 점수 계산
 ```
-집중도 점수 = (EAR × 0.3) + (시선_안정성 × 0.3) + (자세_안정성 × 0.2) + (감정_점수 × 0.2)
+집중도 점수 = 100
+            - EAR 패널티
+            - MAR 패널티
+            - 머리 자세 패널티
+            - ((100 - 시선 안정성) × 0.2)
+            - 깜빡임 패널티
+# (결과는 0 ~ 100 범위로 클램프됩니다)
 ```
 
 ## 🏗️ 프로젝트 구조
