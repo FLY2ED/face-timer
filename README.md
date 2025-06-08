@@ -3,6 +3,11 @@
 ![main](readme/img1.png)
 ![screenshot](readme/img2.png)
 얼굴 인식 기술을 활용한 집중력 관리 및 시간 측정 서비스 (크로스 플랫폼 지원 예정)
+## 🎯 데모
+
+[NALDA Timer 데모](https://timer.naldadev.com)
+
+> 💡 **참고**: 데모 버전에서는 일부 기능이 제한될 수 있습니다.
 
 ## 📖 프로젝트 개요
 
