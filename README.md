@@ -46,7 +46,8 @@ NALDA Timer는 컴퓨터 비전 기술을 활용하여 사용자의 집중도를
 
 ### 설치 방법
 
-1. 저장소 클론```bash
+1. 저장소 클론
+```bash
 git clone https://github.com/your-username/face-timer.git
 cd face-timer
 ```
@@ -187,3 +188,9 @@ src/
 - **카메라 권한**: 웹캠 사용을 위해 브라우저에서 카메라 권한을 허용해야 합니다
 - **성능**: GPU 가속을 위해 WebGL이 지원되는 브라우저에서 사용하시기 바랍니다
 - **조명**: 적절한 조명 환경에서 사용시 더 정확한 얼굴 인식이 가능합니다
+
+## 📚 참고 자료
+- vladmandic/human https://github.com/vladmandic/human  
+- shadcn/ui https://github.com/shadcn/ui  
+- Radix UI https://www.radix-ui.com  
+- Framer Motion https://www.framer.com/motion/  
