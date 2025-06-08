@@ -46,12 +46,14 @@ const iconMapping: Record<string, React.ElementType> = {
 
 interface TaskSelectorProps {
   onRequireAuth: (action: string) => boolean;
+  disabled?: boolean;
 }
 
 const MOCK_CURRENT_USER_ID = mockUsers[0]?.id || "user1";
 
 export const TaskSelector: React.FC<TaskSelectorProps> = ({
   onRequireAuth,
+  disabled = false,
 }) => {
   const { startTimer, activeTask, elapsedTime, isActive } = useTimer();
   const [tasks, setTasks] = useState<AppTask[]>([]);
@@ -175,15 +177,29 @@ export const TaskSelector: React.FC<TaskSelectorProps> = ({
   return (
     <div className="mt-20 flex flex-col items-center">
       <div className="w-full max-w-sm space-y-3">
-        <div className="text-sm text-white font-medium">작업</div>
+        <div className={cn(
+          "text-sm font-medium flex items-center gap-2",
+          disabled ? "text-zinc-500" : "text-white"
+        )}>
+          작업
+          {disabled && (
+            <span className="text-xs text-orange-500 bg-orange-500/10 px-2 py-1 rounded-full">
+              카메라 모드 진행중
+            </span>
+          )}
+        </div>
         {tasks.map((task) => (
           <button
             key={task.id}
-            onClick={() => startTimer(task)}
+            onClick={() => !disabled && startTimer(task)}
+            disabled={disabled}
             className={cn(
               "w-full p-3 flex items-center gap-3 rounded-xl text-white",
-              "hover:bg-white/10 bg-zinc-800/50 transition-all duration-300 ease-in-out",
-              activeTask?.id === task.id && "bg-orange-500/20"
+              "transition-all duration-300 ease-in-out",
+              disabled 
+                ? "bg-zinc-800/20 cursor-not-allowed opacity-50" 
+                : "hover:bg-white/10 bg-zinc-800/50",
+              activeTask?.id === task.id && !disabled && "bg-orange-500/20"
             )}
           >
             <div className="flex-shrink-0">

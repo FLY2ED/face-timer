@@ -1050,10 +1050,12 @@ export const useFaceDetection = ({
             }
           } else {
             lastDetectionsRef.current = null;
-            // 얼굴 감지 실패 시간을 2초로 단축하여 더 빠른 반응
-            if (Date.now() - lastDetectionTime > 2000) {
+            // 얼굴 감지 실패 시 더 빠른 반응을 위해 시간 단축
+            const timeSinceLastDetection = Date.now() - lastDetectionTime;
+            if (timeSinceLastDetection > 800) {
+              console.log(`👤 얼굴 미감지 ${timeSinceLastDetection}ms 경과 - onFaceNotDetected 호출`);
               onFaceNotDetected();
-              setLastDetectionTime(Date.now());
+              // 얼굴이 감지되면 setLastDetectionTime이 업데이트됨
             }
           }
         } catch (err) {

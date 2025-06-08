@@ -41,7 +41,10 @@ export const MainContent: React.FC = () => {
         isCameraMode && "bg-gradient-to-br from-orange-500/10 via-transparent to-orange-500/10"
       )}>
         <Timer onCameraModeChange={handleCameraModeChange} />
-        <TaskSelector onRequireAuth={handleRequireAuth} />
+        <TaskSelector 
+          onRequireAuth={handleRequireAuth} 
+          disabled={isCameraMode && isActive}
+        />
       </div>
       
       {isAuthenticated && (

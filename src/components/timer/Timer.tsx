@@ -188,15 +188,28 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
       setCanStartTimer(false);
       
       // 카메라 모드이고 타이머가 실행 중이며 일시정지 상태가 아닐 때만 일시정지
-      if (isCameraMode && isActive && !isPaused) {
-        console.log("⏸️ 얼굴 미감지로 인한 자동 일시정지 실행");
-        pauseTimer();
+      console.log("🔍 일시정지 조건 상세 확인:", {
+        카메라모드: isCameraMode,
+        타이머활성: isActive,
+        일시정지상태: isPaused,
+        activeTask존재: !!activeTask,
+        pauseTimer함수존재: !!pauseTimer
+      });
+      
+      if (isCameraMode && isActive && !isPaused && activeTask) {
+        console.log("⏸️ 모든 조건 충족 - 얼굴 미감지로 인한 자동 일시정지 실행");
+        try {
+          pauseTimer();
+          console.log("✅ 일시정지 함수 호출 완료");
+        } catch (error) {
+          console.error("❌ 일시정지 함수 호출 실패:", error);
+        }
       } else {
-        console.log("🔍 일시정지 조건 확인:", {
-          카메라모드: isCameraMode,
-          타이머활성: isActive,
-          일시정지상태: isPaused,
-          결론: "일시정지 실행 안됨"
+        console.log("🔍 일시정지 실행 안됨 - 조건 미충족:", {
+          카메라모드: isCameraMode ? "✅" : "❌",
+          타이머활성: isActive ? "✅" : "❌", 
+          일시정지아님: !isPaused ? "✅" : "❌",
+          작업존재: activeTask ? "✅" : "❌"
         });
       }
     },
@@ -286,6 +299,29 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
   useEffect(() => {
     console.log("🔍 주요 상태:", { isCameraMode, isActive, canStartTimer });
   }, [isCameraMode, isActive, canStartTimer]);
+
+  // isPaused 상태 변화 추적
+  useEffect(() => {
+    console.log("⏸️ isPaused 상태 변화:", { 
+      isPaused, 
+      isActive, 
+      isCameraMode,
+      timestamp: new Date().toLocaleTimeString()
+    });
+  }, [isPaused, isActive, isCameraMode]);
+
+  // 주요 상태들의 실시간 변화 추적
+  useEffect(() => {
+    console.log("📊 전체 상태 스냅샷:", {
+      isCameraMode: isCameraMode,
+      isActive: isActive,
+      isPaused: isPaused,
+      activeTask: activeTask?.title || "없음",
+      isWaitingForFace: isWaitingForFace,
+      canStartTimer: canStartTimer,
+      timestamp: new Date().toLocaleTimeString()
+    });
+  }, [isCameraMode, isActive, isPaused, activeTask, isWaitingForFace, canStartTimer]);
 
   // 컴포넌트 언마운트 시 타이머 정리
   useEffect(() => {
@@ -817,14 +853,22 @@ export const Timer: React.FC<TimerProps> = ({ onCameraModeChange }) => {
               variant="default"
               size="lg"
               onClick={async () => {
+                console.log("🛑 정지 버튼 클릭 - 전체 정지 시작");
+                
+                // 1. 먼저 타이머 정지
                 handleStopTimer();
-                // 카메라 모드가 켜져있으면 끄기
+                
+                // 2. 카메라 모드가 켜져있으면 추가로 카메라 끄기
                 if (isCameraMode && isCameraEnabled) {
-                  console.log("🔄 정지 시 카메라 끄기");
+                  console.log("🔄 추가 카메라 비활성화");
                   await toggleCamera();
                 }
-                // 콜백 호출하여 MainContent에 상태 전달
+                
+                // 3. 카메라 모드 상태 완전 리셋
+                setIsCameraMode(false);
                 onCameraModeChange?.(false);
+                
+                console.log("✅ 전체 정지 완료");
               }}
               className="h-10 flex-1 px-4 bg-zinc-300 text-zinc-900 hover:bg-white/30 rounded-xl flex items-center justify-center gap-2"
             >
